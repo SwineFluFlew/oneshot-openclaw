@@ -7,25 +7,25 @@ One-command bootstrap installer for fresh Ubuntu systems that prepares a safe de
 Run the interactive menu:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/openclaweasymode/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/master/install.sh)
 ```
 
 Run safe defaults without menu:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/openclaweasymode/main/install.sh) --default --noninteractive --yes
+bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/master/install.sh) --default --noninteractive --yes
 ```
 
 Run defaults plus OpenClaw clone + helper files:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/openclaweasymode/main/install.sh) --default-openclaw --noninteractive --yes
+bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/master/install.sh) --default-openclaw --noninteractive --yes
 ```
 
 ## Safer Alternative (Review First)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/openclaweasymode/main/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/master/install.sh -o install.sh
 less install.sh
 bash install.sh
 ```
@@ -92,13 +92,10 @@ docker run hello-world
 
 ## Publishing the One-Liner
 
-After creating your GitHub repo and pushing this project:
-
-1. Replace `YOUR_ORG/openclaweasymode` in this README.
-2. Prefer pinned release tags in docs:
+Prefer pinned release tags in docs:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/openclaweasymode/v1.1.0/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/v1.1.0/install.sh)
 ```
 
 ## License
