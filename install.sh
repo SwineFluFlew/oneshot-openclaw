@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_NAME="Ubuntu OpenClaw EasyMode Bootstrap"
-APP_VERSION="1.1.2"
+APP_VERSION="1.2.0"
 
 AI_ROOT="${AI_ROOT:-$HOME/ai}"
 OPENCLAW_DIR="${OPENCLAW_DIR:-$AI_ROOT/openclaw}"
@@ -199,13 +199,13 @@ run_cmd() {
 
 run_apt() {
   if [ "$DRY_RUN" = "1" ]; then
-    echo "[dry-run] sudo apt $*"
+    echo "[dry-run] sudo apt-get $*"
     return 0
   fi
   if [ "$NONINTERACTIVE_MODE" = "1" ] || [ "$YES_MODE" = "1" ]; then
-    sudo DEBIAN_FRONTEND=noninteractive apt "$@"
+    sudo DEBIAN_FRONTEND=noninteractive apt-get "$@"
   else
-    sudo apt "$@"
+    sudo apt-get "$@"
   fi
 }
 
@@ -612,6 +612,37 @@ EOF
   chmod +x "$OPENCLAW_DIR/runtime/openclaw-launch.sh"
 }
 
+create_openclaw_icon() {
+  log "Creating OpenClaw icon asset"
+  run_cmd mkdir -p "$OPENCLAW_DIR/runtime/assets"
+
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "[dry-run] write $OPENCLAW_DIR/runtime/assets/openclaw-icon.svg"
+    return 0
+  fi
+
+  cat > "$OPENCLAW_DIR/runtime/assets/openclaw-icon.svg" <<'EOF'
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="44" fill="url(#bg)"/>
+  <path d="M128 52l62 28v42c0 45-27 77-62 90-35-13-62-45-62-90V80l62-28z" fill="url(#accent)"/>
+  <path d="M95 120c7-15 20-24 33-24 13 0 26 9 33 24" fill="none" stroke="#e2e8f0" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="109" cy="135" r="6" fill="#e2e8f0"/>
+  <circle cx="147" cy="135" r="6" fill="#e2e8f0"/>
+  <path d="M101 158c8 10 17 14 27 14 10 0 19-4 27-14" fill="none" stroke="#e2e8f0" stroke-width="10" stroke-linecap="round"/>
+</svg>
+EOF
+}
+
 install_openclaw_shortcuts() {
   log "Creating OpenClaw desktop shortcuts"
 
@@ -627,6 +658,12 @@ install_openclaw_shortcuts() {
 
   local desktop_file="$HOME/Desktop/OpenClaw.desktop"
   local app_file="$HOME/.local/share/applications/openclaw.desktop"
+  local icon_path="$OPENCLAW_DIR/runtime/assets/openclaw-icon.svg"
+  local icon_value="utilities-terminal"
+
+  if [ -f "$icon_path" ]; then
+    icon_value="$icon_path"
+  fi
 
   run_cmd mkdir -p "$HOME/Desktop"
   run_cmd mkdir -p "$HOME/.local/share/applications"
@@ -643,7 +680,7 @@ Version=1.0
 Name=OpenClaw
 Comment=Start OpenClaw and open dashboard
 Exec=bash -lc "\"$OPENCLAW_DIR/runtime/openclaw-launch.sh\""
-Icon=utilities-terminal
+Icon=$icon_value
 Terminal=true
 Categories=Development;
 EOF
@@ -1001,7 +1038,7 @@ run_cleanup() {
   record_changed "Removed EasyMode summary/log files"
 
   if [ "$DRY_RUN" = "0" ]; then
-    run_cmd sudo apt update || true
+    run_cmd sudo apt-get update || true
   fi
 
   echo
@@ -1105,6 +1142,8 @@ run_install() {
   if [ "$INSTALL_OPENCLAW" = "1" ] || [ "$CONFIGURE_OPENCLAW" = "1" ]; then
     create_openclaw_launcher
     record_changed "OpenClaw launcher script generated"
+    create_openclaw_icon
+    record_changed "OpenClaw icon asset generated"
     if [ "$CREATE_OPENCLAW_SHORTCUT" = "1" ]; then
       install_openclaw_shortcuts
       record_changed "OpenClaw desktop shortcut files generated"

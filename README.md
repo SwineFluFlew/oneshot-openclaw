@@ -58,6 +58,7 @@ bash install.sh
 - GitHub CLI (`gh`)
 - Optional OpenClaw clone and helper runtime files
 - OpenClaw launcher helper (`runtime/openclaw-launch.sh`) for start + dashboard open
+- Local OpenClaw icon asset (`runtime/assets/openclaw-icon.svg`) for shortcut branding
 - Optional OpenClaw desktop shortcut (`OpenClaw.desktop`)
 - Optional terminal desktop shortcut and GNOME dock pin
 
@@ -177,7 +178,7 @@ docker run hello-world
 Prefer pinned release tags in docs:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/v1.1.0/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/v1.2.0/install.sh)
 ```
 
 ## License
