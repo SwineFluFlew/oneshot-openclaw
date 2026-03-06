@@ -51,7 +51,11 @@ bash install.sh
 - Node.js via NodeSource (default major: 22)
 - GitHub CLI (`gh`)
 - Optional OpenClaw clone and helper runtime files
+- OpenClaw launcher helper (`runtime/openclaw-launch.sh`) for start + dashboard open
+- Optional OpenClaw desktop shortcut (`OpenClaw.desktop`)
 - Optional terminal desktop shortcut and GNOME dock pin
+
+When OpenClaw is installed, the installer also attempts to launch it and open the dashboard URL automatically.
 
 ## Menu Modes
 
@@ -84,6 +88,9 @@ bash install.sh
 - `AI_ROOT` Base workspace path (default: `$HOME/ai`)
 - `OPENCLAW_DIR` OpenClaw target directory (default: `$AI_ROOT/openclaw`)
 - `OPENCLAW_REPO` OpenClaw git URL
+- `OPENCLAW_DASHBOARD_URL` Dashboard URL to open after launch (default: `http://127.0.0.1:3000`)
+- `AUTO_LAUNCH_OPENCLAW` Auto-launch OpenClaw after install when repo is present (`1`/`0`)
+- `CREATE_OPENCLAW_SHORTCUT` Create OpenClaw desktop shortcut (`1`/`0`)
 - `NODE_MAJOR` Node.js major version (default: `22`)
 - `LOG_FILE` Installer log file path (default: `$AI_ROOT/bootstrap.log`)
 
@@ -93,7 +100,8 @@ bash install.sh
 - Script requires `sudo`.
 - Firewall changes may affect remote access if your SSH setup is nonstandard.
 - Desktop shortcut behavior depends on desktop environment (GNOME pinning is supported).
-- Script does not install models and does not auto-start OpenClaw.
+- Script does not install models.
+- OpenClaw auto-launch and browser opening are best-effort based on detected startup files.
 
 ## Gotchas (Read This)
 
@@ -105,12 +113,14 @@ bash install.sh
   - Usually harmless for normal browsing; mainly impacts repeated failed login attempts.
 - **Docker permissions**
   - If your user is newly added to the `docker` group, you must log out and back in before `docker` works without `sudo`.
+  - OpenClaw desktop launcher also depends on this permission.
 - **Desktop shortcuts/pinning**
   - Shortcut creation and dock pinning are best-effort and desktop-environment specific.
 - **Apt phased updates**
   - Seeing "upgrades have been deferred due to phasing" is normal on Ubuntu.
 - **OpenClaw expectations**
-  - Installer does not install models and does not auto-start OpenClaw.
+  - Installer does not install models.
+  - Auto-launch uses best-effort detection (`docker compose` or `npm` scripts) and may need manual startup.
 
 ## End-of-install issue summary
 

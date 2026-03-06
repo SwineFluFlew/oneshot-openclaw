@@ -10,6 +10,9 @@ OPENCLAW_REPO="${OPENCLAW_REPO:-https://github.com/openclaw/openclaw.git}"
 NODE_MAJOR="${NODE_MAJOR:-22}"
 
 LOG_FILE="${LOG_FILE:-$AI_ROOT/bootstrap.log}"
+OPENCLAW_DASHBOARD_URL="${OPENCLAW_DASHBOARD_URL:-http://127.0.0.1:3000}"
+AUTO_LAUNCH_OPENCLAW="${AUTO_LAUNCH_OPENCLAW:-1}"
+CREATE_OPENCLAW_SHORTCUT="${CREATE_OPENCLAW_SHORTCUT:-1}"
 
 INSTALL_BASE=1
 INSTALL_SECURITY=0
@@ -143,9 +146,10 @@ print_potential_issues() {
     echo "    Re-run with --hardened if you want UFW/fail2ban enabled."
   fi
   echo "  - Docker non-sudo usage requires a logout/login after docker group changes."
-  echo "  - Desktop shortcut pinning is best-effort and depends on desktop environment support."
+  echo "  - Desktop shortcut and dashboard open are best-effort by desktop environment support."
+  echo "  - OpenClaw desktop launcher uses user Docker permissions after install."
   echo "  - Apt may report deferred phased updates; this is normal on Ubuntu."
-  echo "  - This script does not install AI models and does not auto-start OpenClaw."
+  echo "  - This script does not install AI models."
   echo
 }
 
@@ -484,7 +488,8 @@ configure_openclaw_files() {
   cat > "$OPENCLAW_DIR/runtime/README_LOCAL_SETUP.txt" <<'EOF'
 OpenClaw local prep completed.
 
-This script does NOT install models and does NOT auto-start OpenClaw.
+This script does NOT install models.
+It will attempt to start OpenClaw and open the dashboard URL after setup.
 
 Recommended next steps:
 1. Read the official docs in the OpenClaw repo.
@@ -516,18 +521,164 @@ EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-echo "This helper intentionally does not start OpenClaw automatically."
-echo "Review docs first, then run the exact official startup method you choose."
+echo "Review docs first, then run the startup method you choose."
 echo
 echo "Examples:"
 echo "  - Docker flow from docs"
 echo "  - Installer/wizard flow from docs"
+echo "  - Auto launcher: ./runtime/openclaw-launch.sh"
 echo
 echo "Repo location:"
 pwd
 EOF
 
   chmod +x "$OPENCLAW_DIR/runtime/openclaw-safe-start.sh"
+}
+
+create_openclaw_launcher() {
+  log "Creating OpenClaw launcher"
+  run_cmd mkdir -p "$OPENCLAW_DIR/runtime"
+  run_cmd mkdir -p "$OPENCLAW_DIR/runtime/logs"
+
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "[dry-run] write $OPENCLAW_DIR/runtime/openclaw-launch.sh"
+    return 0
+  fi
+
+  cat > "$OPENCLAW_DIR/runtime/openclaw-launch.sh" <<EOF
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+OPENCLAW_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
+DASHBOARD_URL="\${OPENCLAW_DASHBOARD_URL:-$OPENCLAW_DASHBOARD_URL}"
+LOG_FILE="\$OPENCLAW_DIR/runtime/logs/openclaw-launch.log"
+mkdir -p "\$(dirname "\$LOG_FILE")"
+
+echo "OpenClaw launcher"
+echo "Repo: \$OPENCLAW_DIR"
+echo "Dashboard URL: \$DASHBOARD_URL"
+echo
+
+compose_file=""
+for candidate in docker-compose.yml docker-compose.yaml compose.yml compose.yaml; do
+  if [ -f "\$OPENCLAW_DIR/\$candidate" ]; then
+    compose_file="\$candidate"
+    break
+  fi
+done
+
+started=0
+
+if command -v docker >/dev/null 2>&1 && [ -n "\$compose_file" ]; then
+  echo "Trying Docker startup with \$compose_file..."
+  if (cd "\$OPENCLAW_DIR" && docker compose up -d) >>"\$LOG_FILE" 2>&1; then
+    started=1
+  elif [ "\${OPENCLAW_FORCE_SUDO_DOCKER:-0}" = "1" ] && command -v sudo >/dev/null 2>&1; then
+    (cd "\$OPENCLAW_DIR" && sudo docker compose up -d) >>"\$LOG_FILE" 2>&1 && started=1
+  fi
+fi
+
+if [ "\$started" -eq 0 ] && [ -f "\$OPENCLAW_DIR/package.json" ] && command -v npm >/dev/null 2>&1; then
+  echo "Trying npm startup..."
+  if [ ! -d "\$OPENCLAW_DIR/node_modules" ]; then
+    (cd "\$OPENCLAW_DIR" && npm install) >>"\$LOG_FILE" 2>&1 || true
+  fi
+
+  if command -v jq >/dev/null 2>&1 && jq -e '.scripts.start' "\$OPENCLAW_DIR/package.json" >/dev/null 2>&1; then
+    nohup bash -lc "cd \"\$OPENCLAW_DIR\" && npm run start" >>"\$LOG_FILE" 2>&1 &
+    started=1
+  elif command -v jq >/dev/null 2>&1 && jq -e '.scripts.dev' "\$OPENCLAW_DIR/package.json" >/dev/null 2>&1; then
+    nohup bash -lc "cd \"\$OPENCLAW_DIR\" && npm run dev" >>"\$LOG_FILE" 2>&1 &
+    started=1
+  fi
+fi
+
+if command -v xdg-open >/dev/null 2>&1; then
+  xdg-open "\$DASHBOARD_URL" >/dev/null 2>&1 || true
+fi
+
+if [ "\$started" -eq 1 ]; then
+  echo "OpenClaw start command submitted."
+  echo "Logs: \$LOG_FILE"
+  exit 0
+fi
+
+echo "Could not determine a startup command automatically."
+echo "Check repo docs and run preferred startup manually."
+exit 1
+EOF
+
+  chmod +x "$OPENCLAW_DIR/runtime/openclaw-launch.sh"
+}
+
+install_openclaw_shortcuts() {
+  log "Creating OpenClaw desktop shortcuts"
+
+  if [ "$CREATE_OPENCLAW_SHORTCUT" != "1" ]; then
+    return 0
+  fi
+
+  if [ -z "${XDG_CURRENT_DESKTOP:-}" ] && [ -z "${DESKTOP_SESSION:-}" ]; then
+    warn "No desktop session detected; skipping OpenClaw desktop shortcuts"
+    record_failed "Skipped OpenClaw shortcut creation (no desktop session)"
+    return 0
+  fi
+
+  local desktop_file="$HOME/Desktop/OpenClaw.desktop"
+  local app_file="$HOME/.local/share/applications/openclaw.desktop"
+
+  run_cmd mkdir -p "$HOME/Desktop"
+  run_cmd mkdir -p "$HOME/.local/share/applications"
+
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "[dry-run] write OpenClaw desktop files"
+    return 0
+  fi
+
+  cat > "$desktop_file" <<EOF
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=OpenClaw
+Comment=Start OpenClaw and open dashboard
+Exec=bash -lc "\"$OPENCLAW_DIR/runtime/openclaw-launch.sh\""
+Icon=utilities-terminal
+Terminal=true
+Categories=Development;
+EOF
+
+  cp "$desktop_file" "$app_file"
+  chmod +x "$desktop_file" "$app_file"
+
+  if command_exists gio; then
+    gio set "$desktop_file" metadata::trusted true >/dev/null 2>&1 || true
+  fi
+}
+
+launch_openclaw_after_install() {
+  if [ "$AUTO_LAUNCH_OPENCLAW" != "1" ]; then
+    return 0
+  fi
+
+  log "Launching OpenClaw and opening dashboard"
+
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "[dry-run] $OPENCLAW_DIR/runtime/openclaw-launch.sh"
+    return 0
+  fi
+
+  if [ ! -x "$OPENCLAW_DIR/runtime/openclaw-launch.sh" ]; then
+    warn "OpenClaw launcher is missing; skipping auto-launch"
+    record_failed "OpenClaw auto-launch skipped (launcher missing)"
+    return 0
+  fi
+
+  if OPENCLAW_FORCE_SUDO_DOCKER=1 "$OPENCLAW_DIR/runtime/openclaw-launch.sh"; then
+    record_changed "OpenClaw launch command started and dashboard open attempted"
+  else
+    warn "OpenClaw auto-launch could not determine startup command"
+    record_failed "OpenClaw auto-launch did not find a supported startup method"
+  fi
 }
 
 detect_terminal_desktop_id() {
@@ -638,6 +789,8 @@ Installed components:
   Terminal shortcuts:   $INSTALL_SHORTCUTS
   OpenClaw repo:        $INSTALL_OPENCLAW
   OpenClaw prep files:  $CONFIGURE_OPENCLAW
+  OpenClaw shortcut:    $CREATE_OPENCLAW_SHORTCUT
+  OpenClaw auto-launch: $AUTO_LAUNCH_OPENCLAW
 
 Modes:
   Noninteractive:       $NONINTERACTIVE_MODE
@@ -665,7 +818,7 @@ Docker test:
 Notes:
   - No AI models were installed.
   - No NVIDIA tooling was installed.
-  - OpenClaw was not auto-started.
+  - OpenClaw auto-launch is best-effort and depends on detected startup methods.
   - Review official OpenClaw docs before enabling skills, secrets, or external integrations.
 EOF
 }
@@ -855,6 +1008,15 @@ run_install() {
     configure_openclaw_files
     record_changed "OpenClaw helper runtime/config files generated"
   fi
+  if [ "$INSTALL_OPENCLAW" = "1" ] || [ "$CONFIGURE_OPENCLAW" = "1" ]; then
+    create_openclaw_launcher
+    record_changed "OpenClaw launcher script generated"
+    if [ "$CREATE_OPENCLAW_SHORTCUT" = "1" ]; then
+      install_openclaw_shortcuts
+      record_changed "OpenClaw desktop shortcut files generated"
+    fi
+    launch_openclaw_after_install
+  fi
 
   write_summary
   if [ "$DRY_RUN" = "0" ]; then
@@ -1038,6 +1200,9 @@ Environment variables:
   AI_ROOT=/path/to/workspace
   OPENCLAW_DIR=/path/to/openclaw
   OPENCLAW_REPO=https://github.com/openclaw/openclaw.git
+  OPENCLAW_DASHBOARD_URL=http://127.0.0.1:3000
+  AUTO_LAUNCH_OPENCLAW=1
+  CREATE_OPENCLAW_SHORTCUT=1
   NODE_MAJOR=22
   LOG_FILE=/path/to/bootstrap.log
 EOF
