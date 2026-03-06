@@ -13,6 +13,7 @@ LOG_FILE="${LOG_FILE:-$AI_ROOT/bootstrap.log}"
 OPENCLAW_DASHBOARD_URL="${OPENCLAW_DASHBOARD_URL:-http://127.0.0.1:3000}"
 AUTO_LAUNCH_OPENCLAW="${AUTO_LAUNCH_OPENCLAW:-1}"
 CREATE_OPENCLAW_SHORTCUT="${CREATE_OPENCLAW_SHORTCUT:-1}"
+OPENCLAW_AUTOSTART="${OPENCLAW_AUTOSTART:-1}"
 
 INSTALL_BASE=1
 INSTALL_SECURITY=0
@@ -612,6 +613,99 @@ EOF
   chmod +x "$OPENCLAW_DIR/runtime/openclaw-launch.sh"
 }
 
+create_openclaw_status_script() {
+  log "Creating OpenClaw status script"
+  run_cmd mkdir -p "$OPENCLAW_DIR/runtime"
+
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "[dry-run] write $OPENCLAW_DIR/runtime/openclaw-status.sh"
+    return 0
+  fi
+
+  cat > "$OPENCLAW_DIR/runtime/openclaw-status.sh" <<EOF
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+OPENCLAW_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
+DASHBOARD_URL="\${OPENCLAW_DASHBOARD_URL:-$OPENCLAW_DASHBOARD_URL}"
+PORT=3000
+if [[ "\$DASHBOARD_URL" =~ :([0-9]+) ]]; then PORT="\${BASH_REMATCH[1]}"; fi
+
+echo "OpenClaw Status"
+echo "Dashboard URL: \$DASHBOARD_URL"
+echo
+
+running=0
+if command -v docker >/dev/null 2>&1 && [ -f "\$OPENCLAW_DIR/docker-compose.yml" ] || [ -f "\$OPENCLAW_DIR/docker-compose.yaml" ]; then
+  if (cd "\$OPENCLAW_DIR" && docker compose ps 2>/dev/null) | grep -q "Up"; then
+    running=1
+  fi
+fi
+if [ "\$running" -eq 0 ] && command -v ss >/dev/null 2>&1; then
+  if ss -tlnp 2>/dev/null | grep -q ":\$PORT "; then
+    running=1
+  fi
+fi
+if [ "\$running" -eq 0 ] && command -v netstat >/dev/null 2>&1; then
+  if netstat -tlnp 2>/dev/null | grep -q ":\$PORT "; then
+    running=1
+  fi
+fi
+
+if [ "\$running" -eq 1 ]; then
+  echo "Status: Running"
+  echo "Open dashboard: \$DASHBOARD_URL"
+  if command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "\$DASHBOARD_URL" 2>/dev/null &
+  fi
+else
+  echo "Status: Not running"
+  echo "Run the OpenClaw launcher to start: \$OPENCLAW_DIR/runtime/openclaw-launch.sh"
+fi
+echo
+EOF
+
+  chmod +x "$OPENCLAW_DIR/runtime/openclaw-status.sh"
+}
+
+create_openclaw_autostart_service() {
+  if [ "$OPENCLAW_AUTOSTART" != "1" ]; then
+    return 0
+  fi
+
+  log "Creating OpenClaw autostart service"
+  run_cmd mkdir -p "$HOME/.config/systemd/user"
+
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "[dry-run] write systemd user service for OpenClaw autostart"
+    return 0
+  fi
+
+  cat > "$HOME/.config/systemd/user/openclaw.service" <<EOF
+[Unit]
+Description=OpenClaw
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=$OPENCLAW_DIR/runtime/openclaw-launch.sh
+RemainAfterExit=yes
+Environment="OPENCLAW_DASHBOARD_URL=$OPENCLAW_DASHBOARD_URL"
+
+[Install]
+WantedBy=default.target
+EOF
+
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl --user daemon-reload
+    systemctl --user enable openclaw.service
+    record_changed "OpenClaw autostart enabled (starts when you log in)"
+  else
+    warn "systemctl not found; skipping autostart enable"
+  fi
+}
+
 create_openclaw_icon() {
   log "Creating OpenClaw icon asset"
   run_cmd mkdir -p "$OPENCLAW_DIR/runtime/assets"
@@ -634,11 +728,13 @@ create_openclaw_icon() {
     </linearGradient>
   </defs>
   <rect x="8" y="8" width="240" height="240" rx="44" fill="url(#bg)"/>
-  <path d="M128 52l62 28v42c0 45-27 77-62 90-35-13-62-45-62-90V80l62-28z" fill="url(#accent)"/>
-  <path d="M95 120c7-15 20-24 33-24 13 0 26 9 33 24" fill="none" stroke="#e2e8f0" stroke-width="12" stroke-linecap="round"/>
-  <circle cx="109" cy="135" r="6" fill="#e2e8f0"/>
-  <circle cx="147" cy="135" r="6" fill="#e2e8f0"/>
-  <path d="M101 158c8 10 17 14 27 14 10 0 19-4 27-14" fill="none" stroke="#e2e8f0" stroke-width="10" stroke-linecap="round"/>
+  <g fill="url(#accent)">
+    <ellipse cx="128" cy="155" rx="42" ry="38"/>
+    <ellipse cx="80" cy="95" rx="18" ry="22" transform="rotate(-35 80 95)"/>
+    <ellipse cx="176" cy="95" rx="18" ry="22" transform="rotate(35 176 95)"/>
+    <ellipse cx="58" cy="125" rx="14" ry="18" transform="rotate(-50 58 125)"/>
+    <ellipse cx="198" cy="125" rx="14" ry="18" transform="rotate(50 198 125)"/>
+  </g>
 </svg>
 EOF
 }
@@ -679,7 +775,7 @@ Type=Application
 Version=1.0
 Name=OpenClaw
 Comment=Start OpenClaw and open dashboard
-Exec=bash -lc "\"$OPENCLAW_DIR/runtime/openclaw-launch.sh\""
+Exec=bash -c '$OPENCLAW_DIR/runtime/openclaw-launch.sh; echo; read -p \"Press Enter to close...\"'
 Icon=$icon_value
 Terminal=true
 Categories=Development;
@@ -690,6 +786,25 @@ EOF
 
   if command_exists gio; then
     gio set "$desktop_file" metadata::trusted true >/dev/null 2>&1 || true
+  fi
+
+  local dashboard_file="$HOME/Desktop/OpenClaw Dashboard.desktop"
+  local dashboard_app="$HOME/.local/share/applications/openclaw-dashboard.desktop"
+  cat > "$dashboard_file" <<EOF
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=OpenClaw Dashboard
+Comment=Check OpenClaw status and open dashboard
+Exec=bash -c '$OPENCLAW_DIR/runtime/openclaw-status.sh; read -p \"Press Enter to close...\"'
+Icon=$icon_value
+Terminal=true
+Categories=Development;
+EOF
+  cp "$dashboard_file" "$dashboard_app"
+  chmod +x "$dashboard_file" "$dashboard_app"
+  if command_exists gio; then
+    gio set "$dashboard_file" metadata::trusted true >/dev/null 2>&1 || true
   fi
 }
 
@@ -1029,8 +1144,18 @@ run_cleanup() {
 
   log "Removing desktop shortcuts"
   run_cmd rm -f "$HOME/Desktop/OpenClaw.desktop"
+  run_cmd rm -f "$HOME/Desktop/OpenClaw Dashboard.desktop"
   run_cmd rm -f "$HOME/.local/share/applications/openclaw.desktop"
+  run_cmd rm -f "$HOME/.local/share/applications/openclaw-dashboard.desktop"
   record_changed "Removed OpenClaw desktop shortcuts"
+
+  log "Removing OpenClaw autostart service"
+  if [ -f "$HOME/.config/systemd/user/openclaw.service" ]; then
+    run_cmd systemctl --user disable openclaw.service 2>/dev/null || true
+    run_cmd rm -f "$HOME/.config/systemd/user/openclaw.service"
+    run_cmd systemctl --user daemon-reload 2>/dev/null || true
+    record_changed "Removed OpenClaw autostart service"
+  fi
 
   log "Removing EasyMode output files"
   run_cmd rm -f "$AI_ROOT/BOOTSTRAP_SUMMARY.txt"
@@ -1142,12 +1267,15 @@ run_install() {
   if [ "$INSTALL_OPENCLAW" = "1" ] || [ "$CONFIGURE_OPENCLAW" = "1" ]; then
     create_openclaw_launcher
     record_changed "OpenClaw launcher script generated"
+    create_openclaw_status_script
+    record_changed "OpenClaw status script generated"
     create_openclaw_icon
     record_changed "OpenClaw icon asset generated"
     if [ "$CREATE_OPENCLAW_SHORTCUT" = "1" ]; then
       install_openclaw_shortcuts
       record_changed "OpenClaw desktop shortcut files generated"
     fi
+    create_openclaw_autostart_service
     launch_openclaw_after_install
   fi
 
@@ -1187,6 +1315,20 @@ run_install() {
   echo "  npm -v"
   echo "  gh --version"
   echo
+
+  if [ "$INSTALL_OPENCLAW" = "1" ] || [ "$CONFIGURE_OPENCLAW" = "1" ]; then
+    echo "${C_TITLE}============================================================${C_RESET}"
+    echo "${C_BOLD}OpenClaw dashboard${C_RESET}"
+    echo "${C_TITLE}============================================================${C_RESET}"
+    echo
+    echo "  ${C_INFO}Dashboard URL:${C_RESET} $OPENCLAW_DASHBOARD_URL"
+    echo "  ${C_INFO}Status script:${C_RESET} $OPENCLAW_DIR/runtime/openclaw-status.sh"
+    echo "  ${C_INFO}Launcher:${C_RESET}      $OPENCLAW_DIR/runtime/openclaw-launch.sh"
+    if [ "$OPENCLAW_AUTOSTART" = "1" ]; then
+      echo "  ${C_INFO}Autostart:${C_RESET}     Enabled at login (~/.config/systemd/user/openclaw.service)"
+    fi
+    echo
+  fi
 }
 
 advanced_menu() {
@@ -1316,6 +1458,9 @@ parse_args() {
       --no-openclaw-shortcut)
         CREATE_OPENCLAW_SHORTCUT=0
         ;;
+      --no-openclaw-autostart)
+        OPENCLAW_AUTOSTART=0
+        ;;
       --version)
         echo "$APP_VERSION"
         exit 0
@@ -1341,6 +1486,7 @@ Flags:
   --cleanup            Remove EasyMode-installed components (requires --yes in noninteractive mode)
   --no-launch-openclaw Disable OpenClaw auto-launch at end of install
   --no-openclaw-shortcut Disable OpenClaw desktop shortcut creation
+  --no-openclaw-autostart Disable OpenClaw autostart at login
   --noninteractive     Skip menu and prompts
   --yes                Alias for fully noninteractive flow
   --dry-run            Print actions without making changes
@@ -1355,6 +1501,7 @@ Environment variables:
   OPENCLAW_DASHBOARD_URL=http://127.0.0.1:3000
   AUTO_LAUNCH_OPENCLAW=1
   CREATE_OPENCLAW_SHORTCUT=1
+  OPENCLAW_AUTOSTART=1
   NODE_MAJOR=22
   LOG_FILE=/path/to/bootstrap.log
 EOF

@@ -50,7 +50,7 @@ bash install.sh
 
 ## What It Installs
 
-- Base Ubuntu packages for development and troubleshooting
+- Base Ubuntu packages for development and troubleshooting (`htop`, `btop` — the Ubuntu `btop` package is btop++)
 - Security tools (`ufw`, `fail2ban`, `unattended-upgrades`) in hardened mode
 - Common dev tooling (`pipx`, `poetry`, `ruff`, `black`)
 - Docker Engine + Docker Compose plugin
@@ -60,9 +60,11 @@ bash install.sh
 - OpenClaw launcher helper (`runtime/openclaw-launch.sh`) for start + dashboard open
 - Local OpenClaw icon asset (`runtime/assets/openclaw-icon.svg`) for shortcut branding
 - Optional OpenClaw desktop shortcut (`OpenClaw.desktop`)
+- Optional OpenClaw Dashboard shortcut (checks status and opens dashboard)
+- Optional OpenClaw autostart at login (systemd user service)
 - Optional terminal desktop shortcut and GNOME dock pin
 
-When OpenClaw is installed, the installer also attempts to launch it and open the dashboard URL automatically.
+When OpenClaw is installed, the installer also attempts to launch it and open the dashboard URL automatically. With autostart enabled, OpenClaw will start when you log in.
 
 ## Menu Modes
 
@@ -87,6 +89,7 @@ When OpenClaw is installed, the installer also attempts to launch it and open th
 - `--cleanup` Remove EasyMode-installed components (requires `--yes` in noninteractive mode)
 - `--no-launch-openclaw` Disable OpenClaw auto-launch at end of install
 - `--no-openclaw-shortcut` Disable OpenClaw desktop shortcut creation
+- `--no-openclaw-autostart` Disable OpenClaw autostart at login
 - `--noninteractive` Skip menu and prompts
 - `--yes` Fully noninteractive alias
 - `--dry-run` Print actions only (no changes)
@@ -102,6 +105,7 @@ When OpenClaw is installed, the installer also attempts to launch it and open th
 - `OPENCLAW_DASHBOARD_URL` Dashboard URL to open after launch (default: `http://127.0.0.1:3000`)
 - `AUTO_LAUNCH_OPENCLAW` Auto-launch OpenClaw after install when repo is present (`1`/`0`)
 - `CREATE_OPENCLAW_SHORTCUT` Create OpenClaw desktop shortcut (`1`/`0`)
+- `OPENCLAW_AUTOSTART` Enable OpenClaw autostart at login via systemd user service (`1`/`0`)
 - `NODE_MAJOR` Node.js major version (default: `22`)
 - `LOG_FILE` Installer log file path (default: `$AI_ROOT/bootstrap.log`)
 
@@ -112,7 +116,7 @@ The installer includes a cleanup flow (menu option and `--cleanup`) that attempt
 - Docker, Node.js, GitHub CLI, fail2ban/unattended-upgrades
 - Docker/NodeSource apt source files and keys
 - pipx tools installed by script (`poetry`, `ruff`, `black`)
-- OpenClaw repo directory and generated desktop shortcuts
+- OpenClaw repo directory, generated desktop shortcuts, and autostart service
 - EasyMode summary/log files
 
 Cleanup is best-effort and does not remove unrelated user files.
@@ -180,6 +184,13 @@ npm -v
 gh --version
 docker run hello-world
 ```
+
+## OpenClaw Dashboard (when OpenClaw is installed)
+
+- Dashboard URL: `http://127.0.0.1:3000` (or value of `OPENCLAW_DASHBOARD_URL`)
+- Status script: `$OPENCLAW_DIR/runtime/openclaw-status.sh` — checks if OpenClaw is running and optionally opens the dashboard
+- Launcher: `$OPENCLAW_DIR/runtime/openclaw-launch.sh` — starts OpenClaw and opens the dashboard
+- Autostart: When enabled, OpenClaw starts automatically at login via a systemd user service (`~/.config/systemd/user/openclaw.service`)
 
 ## Publishing the One-Liner
 
