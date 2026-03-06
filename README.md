@@ -34,6 +34,12 @@ Run defaults plus OpenClaw clone + helper files:
 bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/master/install.sh) --default-openclaw --noninteractive --yes
 ```
 
+Run cleanup/remove mode (noninteractive):
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/master/install.sh) --cleanup --yes
+```
+
 ## Safer Alternative (Review First)
 
 ```bash
@@ -69,6 +75,7 @@ When OpenClaw is installed, the installer also attempts to launch it and open th
   - Enables security tools (`ufw`, `fail2ban`, `unattended-upgrades`)
 - **Advanced menu**
   - Toggle each install component individually
+  - Includes cleanup/remove option
 
 ## CLI Flags
 
@@ -76,6 +83,7 @@ When OpenClaw is installed, the installer also attempts to launch it and open th
 - `--default-openclaw` Run desktop-safe defaults + OpenClaw prep
 - `--hardened` Run hardened defaults (security tools enabled)
 - `--hardened-openclaw` Run hardened defaults + OpenClaw prep
+- `--cleanup` Remove EasyMode-installed components (requires `--yes` in noninteractive mode)
 - `--noninteractive` Skip menu and prompts
 - `--yes` Fully noninteractive alias
 - `--dry-run` Print actions only (no changes)
@@ -93,6 +101,18 @@ When OpenClaw is installed, the installer also attempts to launch it and open th
 - `CREATE_OPENCLAW_SHORTCUT` Create OpenClaw desktop shortcut (`1`/`0`)
 - `NODE_MAJOR` Node.js major version (default: `22`)
 - `LOG_FILE` Installer log file path (default: `$AI_ROOT/bootstrap.log`)
+
+## Cleanup / Remove
+
+The installer includes a cleanup flow (menu option and `--cleanup`) that attempts to remove components this script manages:
+
+- Docker, Node.js, GitHub CLI, fail2ban/unattended-upgrades
+- Docker/NodeSource apt source files and keys
+- pipx tools installed by script (`poetry`, `ruff`, `black`)
+- OpenClaw repo directory and generated desktop shortcuts
+- EasyMode summary/log files
+
+Cleanup is best-effort and does not remove unrelated user files.
 
 ## Notes and Caveats
 

@@ -28,6 +28,7 @@ NONINTERACTIVE_MODE=0
 DRY_RUN=0
 YES_MODE=0
 SKIP_UPDATE=0
+RUN_CLEANUP=0
 
 show_reboot_notice=0
 docker_group_added=0
@@ -917,6 +918,99 @@ set_hardened_openclaw_defaults() {
   CONFIGURE_OPENCLAW=1
 }
 
+confirm_cleanup() {
+  if [ "$YES_MODE" = "1" ] || [ "$DRY_RUN" = "1" ]; then
+    return 0
+  fi
+
+  if [ "$NONINTERACTIVE_MODE" = "1" ]; then
+    die "--cleanup in noninteractive mode requires --yes"
+  fi
+
+  echo
+  echo "${C_WARN}${C_BOLD}Cleanup confirmation${C_RESET}"
+  echo "This will remove EasyMode-managed components and OpenClaw local files."
+  echo "Type ${C_BOLD}REMOVE${C_RESET} to continue:"
+  local confirm
+  read -r confirm
+  if [ "$confirm" != "REMOVE" ]; then
+    die "Cleanup cancelled by user"
+  fi
+}
+
+run_cleanup() {
+  confirm_cleanup
+  require_sudo
+  start_sudo_keepalive
+
+  log "Running cleanup/remove flow"
+  record_changed "Cleanup flow started"
+
+  log "Stopping related services"
+  run_cmd sudo systemctl disable --now docker >/dev/null 2>&1 || true
+  run_cmd sudo systemctl disable --now fail2ban >/dev/null 2>&1 || true
+  record_changed "Docker/fail2ban services stopped or disabled"
+
+  log "Removing apt-managed components"
+  run_apt remove -y \
+    gh \
+    nodejs \
+    fail2ban \
+    unattended-upgrades \
+    docker-ce \
+    docker-ce-cli \
+    containerd.io \
+    docker-buildx-plugin \
+    docker-compose-plugin \
+    docker-ce-rootless-extras \
+    libslirp0 \
+    slirp4netns \
+    pigz || true
+  run_apt autoremove -y || true
+  record_changed "Apt cleanup attempted for EasyMode-installed packages"
+
+  log "Removing apt source files and keys"
+  run_cmd sudo rm -f /etc/apt/sources.list.d/docker.list
+  run_cmd sudo rm -f /etc/apt/sources.list.d/nodesource.list
+  run_cmd sudo rm -f /etc/apt/keyrings/docker.asc
+  run_cmd sudo rm -f /etc/apt/keyrings/nodesource.gpg
+  record_changed "Docker/NodeSource apt source files removed"
+
+  log "Removing Python CLI tools installed via pipx"
+  if command_exists pipx; then
+    run_cmd pipx uninstall poetry || true
+    run_cmd pipx uninstall ruff || true
+    run_cmd pipx uninstall black || true
+    record_changed "pipx tools removal attempted (poetry/ruff/black)"
+  fi
+
+  log "Removing OpenClaw repo and generated files"
+  if [ -d "$OPENCLAW_DIR" ]; then
+    run_cmd rm -rf "$OPENCLAW_DIR"
+    record_changed "Removed OpenClaw directory at $OPENCLAW_DIR"
+  fi
+
+  log "Removing desktop shortcuts"
+  run_cmd rm -f "$HOME/Desktop/OpenClaw.desktop"
+  run_cmd rm -f "$HOME/.local/share/applications/openclaw.desktop"
+  record_changed "Removed OpenClaw desktop shortcuts"
+
+  log "Removing EasyMode output files"
+  run_cmd rm -f "$AI_ROOT/BOOTSTRAP_SUMMARY.txt"
+  run_cmd rm -f "$LOG_FILE"
+  record_changed "Removed EasyMode summary/log files"
+
+  if [ "$DRY_RUN" = "0" ]; then
+    run_cmd sudo apt update || true
+  fi
+
+  echo
+  echo "${C_TITLE}============================================================${C_RESET}"
+  echo "${C_OK}${C_BOLD}Cleanup complete${C_RESET}"
+  echo "${C_TITLE}============================================================${C_RESET}"
+  print_execution_summary
+}
+
 run_install() {
   local had_node=0
   local had_docker=0
@@ -1074,7 +1168,8 @@ advanced_menu() {
     echo " 11) Reset to hardened defaults"
     echo " 12) Reset to hardened + OpenClaw defaults"
     echo " 13) Start install"
-    echo " 14) Exit"
+    echo " 14) Cleanup / remove EasyMode changes"
+    echo " 15) Exit"
     echo
     read -r -p "Choose an option: " choice
 
@@ -1092,7 +1187,8 @@ advanced_menu() {
       11) set_hardened_defaults ;;
       12) set_hardened_openclaw_defaults ;;
       13) run_install; break ;;
-      14) exit 0 ;;
+      14) run_cleanup; break ;;
+      15) exit 0 ;;
       *) warn "Invalid option"; pause ;;
     esac
   done
@@ -1120,7 +1216,8 @@ main_menu() {
     echo
     echo "  3) Hardened install (security tools on)"
     echo "  4) Advanced selection menu"
-    echo "  5) Exit"
+    echo "  5) Cleanup / remove EasyMode changes"
+    echo "  6) Exit"
     echo
     read -r -p "Choose an option: " choice
 
@@ -1129,7 +1226,8 @@ main_menu() {
       2) set_defaults; INSTALL_OPENCLAW=1; CONFIGURE_OPENCLAW=1; run_install; break ;;
       3) set_hardened_defaults; run_install; break ;;
       4) advanced_menu; break ;;
-      5) exit 0 ;;
+      5) run_cleanup; break ;;
+      6) exit 0 ;;
       *) warn "Invalid option"; pause ;;
     esac
   done
@@ -1169,6 +1267,10 @@ parse_args() {
         NONINTERACTIVE_MODE=1
         set_hardened_openclaw_defaults
         ;;
+      --cleanup)
+        RUN_CLEANUP=1
+        NONINTERACTIVE_MODE=1
+        ;;
       --version)
         echo "$APP_VERSION"
         exit 0
@@ -1181,6 +1283,7 @@ Usage:
   $0 --default-openclaw
   $0 --hardened
   $0 --hardened-openclaw
+  $0 --cleanup --yes
   $0 --default --noninteractive --yes
   $0 --default --dry-run
 
@@ -1189,6 +1292,7 @@ Flags:
   --default-openclaw   Run desktop-safe defaults + OpenClaw prep
   --hardened           Run hardened defaults (security tools enabled)
   --hardened-openclaw  Run hardened defaults + OpenClaw prep
+  --cleanup            Remove EasyMode-installed components (requires --yes in noninteractive mode)
   --noninteractive     Skip menu and prompts
   --yes                Alias for fully noninteractive flow
   --dry-run            Print actions without making changes
@@ -1225,7 +1329,11 @@ main() {
   fi
 
   if [ "$NONINTERACTIVE_MODE" = "1" ]; then
-    run_install
+    if [ "$RUN_CLEANUP" = "1" ]; then
+      run_cleanup
+    else
+      run_install
+    fi
   else
     main_menu
   fi
