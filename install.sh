@@ -14,6 +14,7 @@ OPENCLAW_DASHBOARD_URL="${OPENCLAW_DASHBOARD_URL:-http://127.0.0.1:3000}"
 AUTO_LAUNCH_OPENCLAW="${AUTO_LAUNCH_OPENCLAW:-1}"
 CREATE_OPENCLAW_SHORTCUT="${CREATE_OPENCLAW_SHORTCUT:-1}"
 OPENCLAW_AUTOSTART="${OPENCLAW_AUTOSTART:-1}"
+OPENCLAW_ONBOARD="${OPENCLAW_ONBOARD:-1}"
 
 INSTALL_BASE=1
 INSTALL_SECURITY=0
@@ -901,6 +902,50 @@ EOF
   fi
 }
 
+run_openclaw_onboard() {
+  if [ "$OPENCLAW_ONBOARD" != "1" ]; then
+    return 0
+  fi
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "[dry-run] Run OpenClaw onboard wizard"
+    return 0
+  fi
+
+  log "Running OpenClaw onboarding wizard"
+  echo "The wizard configures .env, workspace, gateway, and skills."
+  echo
+
+  if ! command -v pnpm >/dev/null 2>&1; then
+    if command -v corepack >/dev/null 2>&1; then
+      corepack enable 2>/dev/null || true
+      corepack prepare pnpm@latest --activate 2>/dev/null || true
+    fi
+    if ! command -v pnpm >/dev/null 2>&1; then
+      npm install -g pnpm 2>/dev/null || true
+    fi
+  fi
+
+  if ! command -v pnpm >/dev/null 2>&1; then
+    warn "pnpm not available; skipping onboard wizard"
+    echo "Run manually: npm install -g pnpm && cd $OPENCLAW_DIR && pnpm install && pnpm run openclaw -- onboard"
+    record_failed "OpenClaw onboard skipped (pnpm unavailable)"
+    return 1
+  fi
+
+  if [ ! -d "$OPENCLAW_DIR/node_modules" ]; then
+    (cd "$OPENCLAW_DIR" && pnpm install) || { record_failed "pnpm install failed"; return 1; }
+  fi
+
+  if [ "$YES_MODE" = "1" ] || [ "$NONINTERACTIVE_MODE" = "1" ]; then
+    (cd "$OPENCLAW_DIR" && pnpm run openclaw -- onboard --non-interactive) >>"$LOG_FILE" 2>&1 || true
+    record_changed "OpenClaw onboard (non-interactive) attempted"
+  else
+    (cd "$OPENCLAW_DIR" && pnpm run openclaw -- onboard) || true
+    record_changed "OpenClaw onboard wizard completed"
+  fi
+  return 0
+}
+
 launch_openclaw_after_install() {
   if [ "$AUTO_LAUNCH_OPENCLAW" != "1" ]; then
     return 0
@@ -1369,6 +1414,7 @@ run_install() {
       record_changed "OpenClaw desktop shortcut files generated"
     fi
     create_openclaw_autostart_service
+    run_openclaw_onboard
     launch_openclaw_after_install
   fi
 
@@ -1554,6 +1600,9 @@ parse_args() {
       --no-openclaw-autostart)
         OPENCLAW_AUTOSTART=0
         ;;
+      --no-openclaw-onboard)
+        OPENCLAW_ONBOARD=0
+        ;;
       --version)
         echo "$APP_VERSION"
         exit 0
@@ -1580,6 +1629,7 @@ Flags:
   --no-launch-openclaw Disable OpenClaw auto-launch at end of install
   --no-openclaw-shortcut Disable OpenClaw desktop shortcut creation
   --no-openclaw-autostart Disable OpenClaw autostart at login
+  --no-openclaw-onboard   Skip OpenClaw onboarding wizard
   --noninteractive     Skip menu and prompts
   --yes                Alias for fully noninteractive flow
   --dry-run            Print actions without making changes
@@ -1595,6 +1645,7 @@ Environment variables:
   AUTO_LAUNCH_OPENCLAW=1
   CREATE_OPENCLAW_SHORTCUT=1
   OPENCLAW_AUTOSTART=1
+  OPENCLAW_ONBOARD=1
   NODE_MAJOR=22
   LOG_FILE=/path/to/bootstrap.log
 EOF

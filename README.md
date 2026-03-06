@@ -62,6 +62,7 @@ bash install.sh
 - Optional OpenClaw desktop shortcut (`OpenClaw.desktop`)
 - Optional OpenClaw Dashboard shortcut (checks status and opens dashboard)
 - Optional OpenClaw autostart at login (systemd user service)
+- OpenClaw onboarding wizard at end of install (configures .env, gateway, workspace)
 - Optional terminal desktop shortcut and GNOME dock pin
 
 When OpenClaw is installed, the installer also attempts to launch it and open the dashboard URL automatically. With autostart enabled, OpenClaw will start when you log in.
@@ -90,6 +91,7 @@ When OpenClaw is installed, the installer also attempts to launch it and open th
 - `--no-launch-openclaw` Disable OpenClaw auto-launch at end of install
 - `--no-openclaw-shortcut` Disable OpenClaw desktop shortcut creation
 - `--no-openclaw-autostart` Disable OpenClaw autostart at login
+- `--no-openclaw-onboard` Skip OpenClaw onboarding wizard
 - `--noninteractive` Skip menu and prompts
 - `--yes` Fully noninteractive alias
 - `--dry-run` Print actions only (no changes)
@@ -106,6 +108,7 @@ When OpenClaw is installed, the installer also attempts to launch it and open th
 - `AUTO_LAUNCH_OPENCLAW` Auto-launch OpenClaw after install when repo is present (`1`/`0`)
 - `CREATE_OPENCLAW_SHORTCUT` Create OpenClaw desktop shortcut (`1`/`0`)
 - `OPENCLAW_AUTOSTART` Enable OpenClaw autostart at login via systemd user service (`1`/`0`)
+- `OPENCLAW_ONBOARD` Run OpenClaw onboarding wizard at end of install (`1`/`0`)
 - `NODE_MAJOR` Node.js major version (default: `22`)
 - `LOG_FILE` Installer log file path (default: `$AI_ROOT/bootstrap.log`)
 
@@ -199,6 +202,7 @@ docker run hello-world
 - Dashboard URL: `http://127.0.0.1:3000` (or value of `OPENCLAW_DASHBOARD_URL`)
 - Status script: `$OPENCLAW_DIR/runtime/openclaw-status.sh` — checks if OpenClaw is running and optionally opens the dashboard
 - Launcher: `$OPENCLAW_DIR/runtime/openclaw-launch.sh` — starts OpenClaw and opens the dashboard
+- Onboard wizard: run at end of install (`openclaw onboard`) — configures .env, gateway, workspace, and skills
 - Autostart: When enabled, OpenClaw starts automatically at login via a systemd user service (`~/.config/systemd/user/openclaw.service`)
 
 ## Publishing the One-Liner
