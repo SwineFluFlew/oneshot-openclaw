@@ -10,6 +10,18 @@ Run the interactive menu:
 bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/master/install.sh)
 ```
 
+If `curl` is missing on a fresh image:
+
+```bash
+sudo apt update && sudo apt install -y curl
+```
+
+Or use `wget` directly (no process substitution needed):
+
+```bash
+wget -qO- https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/master/install.sh | bash
+```
+
 Run safe defaults without menu:
 
 ```bash
