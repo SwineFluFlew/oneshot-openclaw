@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_NAME="Ubuntu OpenClaw EasyMode Bootstrap"
-VERSION="1.1.1"
+APP_VERSION="1.1.2"
 
 AI_ROOT="${AI_ROOT:-$HOME/ai}"
 OPENCLAW_DIR="${OPENCLAW_DIR:-$AI_ROOT/openclaw}"
@@ -33,7 +33,7 @@ SUDO_KEEPALIVE_PID=""
 print_header() {
   clear || true
   echo "============================================================"
-  echo "  $APP_NAME v$VERSION"
+  echo "  $APP_NAME v$APP_VERSION"
   echo "============================================================"
   echo
 }
@@ -802,7 +802,7 @@ parse_args() {
         set_power_user_defaults
         ;;
       --version)
-        echo "$VERSION"
+        echo "$APP_VERSION"
         exit 0
         ;;
       --help|-h)
