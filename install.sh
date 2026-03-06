@@ -902,13 +902,31 @@ install_openclaw_shortcuts() {
     return 0
   fi
 
+  # Wrapper scripts for desktop shortcuts (avoids bash -c quoting issues in .desktop Exec)
+  local launch_wrapper="$OPENCLAW_DIR/runtime/openclaw-desktop-launch.sh"
+  local dashboard_wrapper="$OPENCLAW_DIR/runtime/openclaw-desktop-dashboard.sh"
+  cat > "$launch_wrapper" <<'WRAPEOF'
+#!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$SCRIPT_DIR/openclaw-launch.sh"
+echo
+read -p "Press Enter to close..."
+WRAPEOF
+  cat > "$dashboard_wrapper" <<'WRAPEOF'
+#!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$SCRIPT_DIR/openclaw-status.sh"
+read -p "Press Enter to close..."
+WRAPEOF
+  chmod +x "$launch_wrapper" "$dashboard_wrapper"
+
   cat > "$desktop_file" <<EOF
 [Desktop Entry]
 Type=Application
 Version=1.0
 Name=OpenClaw
 Comment=Start OpenClaw and open dashboard
-Exec=bash -c '$OPENCLAW_DIR/runtime/openclaw-launch.sh; echo; read -p \"Press Enter to close...\"'
+Exec=$launch_wrapper
 Icon=$icon_value
 Terminal=true
 Categories=Development;
@@ -929,7 +947,7 @@ Type=Application
 Version=1.0
 Name=OpenClaw Dashboard
 Comment=Check OpenClaw status and open dashboard
-Exec=bash -c '$OPENCLAW_DIR/runtime/openclaw-status.sh; read -p \"Press Enter to close...\"'
+Exec=$dashboard_wrapper
 Icon=$icon_value
 Terminal=true
 Categories=Development;
