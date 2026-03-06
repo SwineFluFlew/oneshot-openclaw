@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_NAME="Ubuntu OpenClaw EasyMode Bootstrap"
-VERSION="1.1.0"
+VERSION="1.1.1"
 
 AI_ROOT="${AI_ROOT:-$HOME/ai}"
 OPENCLAW_DIR="${OPENCLAW_DIR:-$AI_ROOT/openclaw}"
@@ -218,7 +218,7 @@ install_dev_tools() {
   export PATH="$HOME/.local/bin:$PATH"
 
   if [ "$DRY_RUN" = "1" ]; then
-    echo "[dry-run] python3 -m pip install --user --upgrade pip"
+    echo "[dry-run] ensure pipx is installed"
     echo "[dry-run] pipx ensurepath"
     echo "[dry-run] pipx install poetry"
     echo "[dry-run] pipx install ruff"
@@ -226,12 +226,26 @@ install_dev_tools() {
     return 0
   fi
 
-  python3 -m pip install --user --upgrade pip
+  # Ubuntu 24.04+ enforces PEP 668 for system Python. Avoid pip --user upgrades here.
+  if ! command_exists pipx; then
+    warn "pipx not found; attempting apt install"
+    run_apt install -y pipx python3-venv
+  fi
+
+  if ! command_exists pipx; then
+    warn "pipx is unavailable; skipping poetry/ruff/black installs"
+    return 0
+  fi
+
   pipx ensurepath || true
 
-  pipx install poetry || warn "poetry install failed; continuing"
-  pipx install ruff || warn "ruff install failed; continuing"
-  pipx install black || warn "black install failed; continuing"
+  if [ -d "$HOME/.local/bin" ]; then
+    export PATH="$HOME/.local/bin:$PATH"
+  fi
+
+  pipx install poetry || pipx upgrade poetry || warn "poetry install failed; continuing"
+  pipx install ruff || pipx upgrade ruff || warn "ruff install failed; continuing"
+  pipx install black || pipx upgrade black || warn "black install failed; continuing"
 }
 
 install_docker() {

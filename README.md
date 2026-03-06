@@ -90,6 +90,13 @@ bash install.sh
 - Desktop shortcut behavior depends on desktop environment (GNOME pinning is supported).
 - Script does not install models and does not auto-start OpenClaw.
 
+## Troubleshooting
+
+- **`externally-managed-environment` during dev tools step**
+  - This is a Python packaging policy on newer Ubuntu releases (PEP 668).
+  - Current installer versions avoid `python3 -m pip install --user --upgrade pip` and use `pipx`.
+  - If you hit this, rerun using the latest script from this repository.
+
 ## Recommended Verification
 
 ```bash
