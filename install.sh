@@ -493,13 +493,17 @@ configure_openclaw_files() {
   local workspace_dir="$OPENCLAW_DIR/runtime/workspace"
   local gateway_token
   gateway_token="$(openssl rand -hex 16 2>/dev/null || echo "local-$(date +%s)")"
-  if [ ! -f "$OPENCLAW_DIR/.env" ]; then
-    cat > "$OPENCLAW_DIR/.env" <<ENVEOF
-# OpenClaw Docker Compose env (created by EasyMode installer)
-OPENCLAW_CONFIG_DIR=$config_dir
-OPENCLAW_WORKSPACE_DIR=$workspace_dir
-OPENCLAW_GATEWAY_TOKEN=$gateway_token
-ENVEOF
+  local need_env=0
+  if [ ! -f "$OPENCLAW_DIR/.env" ]; then need_env=1; fi
+  if [ "$need_env" -eq 0 ] && ! grep -qE "^OPENCLAW_CONFIG_DIR=." "$OPENCLAW_DIR/.env" 2>/dev/null; then need_env=1; fi
+  if [ "$need_env" -eq 1 ]; then
+    if [ -f "$OPENCLAW_DIR/.env" ]; then
+      grep -vE "^OPENCLAW_CONFIG_DIR=|^OPENCLAW_WORKSPACE_DIR=|^OPENCLAW_GATEWAY_TOKEN=" "$OPENCLAW_DIR/.env" > "$OPENCLAW_DIR/.env.tmp" 2>/dev/null || true
+      mv -f "$OPENCLAW_DIR/.env.tmp" "$OPENCLAW_DIR/.env" 2>/dev/null || rm -f "$OPENCLAW_DIR/.env.tmp"
+    fi
+    echo "OPENCLAW_CONFIG_DIR=$config_dir" >> "$OPENCLAW_DIR/.env"
+    echo "OPENCLAW_WORKSPACE_DIR=$workspace_dir" >> "$OPENCLAW_DIR/.env"
+    echo "OPENCLAW_GATEWAY_TOKEN=$gateway_token" >> "$OPENCLAW_DIR/.env"
   fi
 
   # OpenClaw's npm scripts use pnpm for TypeScript build
@@ -592,15 +596,24 @@ for candidate in docker-compose.yml docker-compose.yaml compose.yml compose.yaml
   fi
 done
 
-# Ensure .env exists for Docker Compose (avoids "invalid spec" volume errors)
-if [ -n "\$compose_file" ] && [ ! -f "\$OPENCLAW_DIR/.env" ]; then
+# Ensure .env has required vars for Docker Compose (avoids "invalid spec" volume errors)
+if [ -n "\$compose_file" ]; then
   cfg="\$OPENCLAW_DIR/runtime/config"
   ws="\$OPENCLAW_DIR/runtime/workspace"
   mkdir -p "\$cfg" "\$ws"
-  tok="\$(openssl rand -hex 16 2>/dev/null || echo "local-\$(date +%s)")"
-  echo "OPENCLAW_CONFIG_DIR=\$cfg" > "\$OPENCLAW_DIR/.env"
-  echo "OPENCLAW_WORKSPACE_DIR=\$ws" >> "\$OPENCLAW_DIR/.env"
-  echo "OPENCLAW_GATEWAY_TOKEN=\$tok" >> "\$OPENCLAW_DIR/.env"
+  need_env=0
+  if [ ! -f "\$OPENCLAW_DIR/.env" ]; then need_env=1; fi
+  if [ "\$need_env" -eq 0 ] && ! grep -qE "^OPENCLAW_CONFIG_DIR=." "\$OPENCLAW_DIR/.env" 2>/dev/null; then need_env=1; fi
+  if [ "\$need_env" -eq 1 ]; then
+    tok="\$(openssl rand -hex 16 2>/dev/null || echo "local-\$(date +%s)")"
+    if [ -f "\$OPENCLAW_DIR/.env" ]; then
+      grep -vE "^OPENCLAW_CONFIG_DIR=|^OPENCLAW_WORKSPACE_DIR=|^OPENCLAW_GATEWAY_TOKEN=" "\$OPENCLAW_DIR/.env" > "\$OPENCLAW_DIR/.env.tmp" 2>/dev/null || touch "\$OPENCLAW_DIR/.env.tmp"
+      mv -f "\$OPENCLAW_DIR/.env.tmp" "\$OPENCLAW_DIR/.env"
+    fi
+    echo "OPENCLAW_CONFIG_DIR=\$cfg" >> "\$OPENCLAW_DIR/.env"
+    echo "OPENCLAW_WORKSPACE_DIR=\$ws" >> "\$OPENCLAW_DIR/.env"
+    echo "OPENCLAW_GATEWAY_TOKEN=\$tok" >> "\$OPENCLAW_DIR/.env"
+  fi
 fi
 
 started=0
@@ -620,24 +633,35 @@ if [ "\$started" -eq 0 ] && [ -f "\$OPENCLAW_DIR/package.json" ] && command -v n
     if command -v corepack >/dev/null 2>&1; then
       corepack enable 2>/dev/null || true
       corepack prepare pnpm@latest --activate 2>/dev/null || true
-    else
+    fi
+    if ! command -v pnpm >/dev/null 2>&1; then
+      echo "Installing pnpm..."
       npm install -g pnpm >>"\$LOG_FILE" 2>&1 || true
     fi
   fi
-  if [ ! -d "\$OPENCLAW_DIR/node_modules" ]; then
-    if command -v pnpm >/dev/null 2>&1; then
+  if ! command -v pnpm >/dev/null 2>&1; then
+    echo "pnpm is required but could not be installed. Run: npm install -g pnpm"
+  else
+    if [ ! -d "\$OPENCLAW_DIR/node_modules" ]; then
       (cd "\$OPENCLAW_DIR" && pnpm install) >>"\$LOG_FILE" 2>&1 || true
-    else
-      (cd "\$OPENCLAW_DIR" && npm install) >>"\$LOG_FILE" 2>&1 || true
     fi
-  fi
 
-  if command -v jq >/dev/null 2>&1 && jq -e '.scripts.start' "\$OPENCLAW_DIR/package.json" >/dev/null 2>&1; then
-    nohup bash -lc "cd \"\$OPENCLAW_DIR\" && npm run start" >>"\$LOG_FILE" 2>&1 &
-    started=1
-  elif command -v jq >/dev/null 2>&1 && jq -e '.scripts.dev' "\$OPENCLAW_DIR/package.json" >/dev/null 2>&1; then
-    nohup bash -lc "cd \"\$OPENCLAW_DIR\" && npm run dev" >>"\$LOG_FILE" 2>&1 &
-    started=1
+    extra_path=""
+    if command -v node >/dev/null 2>&1; then
+      node_bin="\$(dirname "\$(command -v node)")"
+      [ -n "\$node_bin" ] && extra_path="\$node_bin:"
+    fi
+    if command -v npm >/dev/null 2>&1; then
+      npmp="\$(npm config get prefix 2>/dev/null)"
+      [ -n "\$npmp" ] && [ -d "\$npmp/bin" ] && extra_path="\$extra_path\$npmp/bin:"
+    fi
+    if command -v jq >/dev/null 2>&1 && jq -e '.scripts.start' "\$OPENCLAW_DIR/package.json" >/dev/null 2>&1; then
+      nohup env PATH="\${extra_path}\$PATH" bash -lc "cd \"\$OPENCLAW_DIR\" && npm run start" >>"\$LOG_FILE" 2>&1 &
+      started=1
+    elif command -v jq >/dev/null 2>&1 && jq -e '.scripts.dev' "\$OPENCLAW_DIR/package.json" >/dev/null 2>&1; then
+      nohup env PATH="\${extra_path}\$PATH" bash -lc "cd \"\$OPENCLAW_DIR\" && npm run dev" >>"\$LOG_FILE" 2>&1 &
+      started=1
+    fi
   fi
 fi
 
