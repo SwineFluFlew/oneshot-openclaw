@@ -1310,6 +1310,12 @@ parse_args() {
         RUN_CLEANUP=1
         NONINTERACTIVE_MODE=1
         ;;
+      --no-launch-openclaw)
+        AUTO_LAUNCH_OPENCLAW=0
+        ;;
+      --no-openclaw-shortcut)
+        CREATE_OPENCLAW_SHORTCUT=0
+        ;;
       --version)
         echo "$APP_VERSION"
         exit 0
@@ -1323,6 +1329,7 @@ Usage:
   $0 --hardened
   $0 --hardened-openclaw
   $0 --cleanup --yes
+  $0 --default-openclaw --no-launch-openclaw --no-openclaw-shortcut
   $0 --default --noninteractive --yes
   $0 --default --dry-run
 
@@ -1332,6 +1339,8 @@ Flags:
   --hardened           Run hardened defaults (security tools enabled)
   --hardened-openclaw  Run hardened defaults + OpenClaw prep
   --cleanup            Remove EasyMode-installed components (requires --yes in noninteractive mode)
+  --no-launch-openclaw Disable OpenClaw auto-launch at end of install
+  --no-openclaw-shortcut Disable OpenClaw desktop shortcut creation
   --noninteractive     Skip menu and prompts
   --yes                Alias for fully noninteractive flow
   --dry-run            Print actions without making changes

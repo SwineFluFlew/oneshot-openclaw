@@ -85,6 +85,8 @@ When OpenClaw is installed, the installer also attempts to launch it and open th
 - `--hardened` Run hardened defaults (security tools enabled)
 - `--hardened-openclaw` Run hardened defaults + OpenClaw prep
 - `--cleanup` Remove EasyMode-installed components (requires `--yes` in noninteractive mode)
+- `--no-launch-openclaw` Disable OpenClaw auto-launch at end of install
+- `--no-openclaw-shortcut` Disable OpenClaw desktop shortcut creation
 - `--noninteractive` Skip menu and prompts
 - `--yes` Fully noninteractive alias
 - `--dry-run` Print actions only (no changes)
@@ -142,6 +144,12 @@ Cleanup is best-effort and does not remove unrelated user files.
 - **OpenClaw expectations**
   - Installer does not install models.
   - Auto-launch uses best-effort detection (`docker compose` or `npm` scripts) and may need manual startup.
+
+## Known Limitations
+
+- Auto-launch is best-effort and depends on detected startup files/scripts.
+- Dashboard open (`xdg-open`) may be ignored in headless or restricted desktop sessions.
+- Dock pinning behavior is desktop-environment specific and may be unavailable outside GNOME-compatible setups.
 
 ## End-of-install issue summary
 
