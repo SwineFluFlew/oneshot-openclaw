@@ -7,7 +7,7 @@ One-command bootstrap installer for fresh Ubuntu systems that prepares a safe de
 Run the interactive menu:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/master/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/main/install.sh)
 ```
 
 If `curl` is missing on a fresh image:
@@ -19,31 +19,31 @@ sudo apt update && sudo apt install -y curl
 Or use `wget` directly (no process substitution needed):
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/master/install.sh | bash
+wget -qO- https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/main/install.sh | bash
 ```
 
 Run safe defaults without menu:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/master/install.sh) --default --noninteractive --yes
+bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/main/install.sh) --default --noninteractive --yes
 ```
 
 Run defaults plus OpenClaw clone + helper files:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/master/install.sh) --default-openclaw --noninteractive --yes
+bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/main/install.sh) --default-openclaw --noninteractive --yes
 ```
 
 Run cleanup/remove mode (noninteractive):
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/master/install.sh) --cleanup --yes
+bash <(curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/main/install.sh) --cleanup --yes
 ```
 
 ## Safer Alternative (Review First)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/master/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/SwineFluFlew/oneshot-openclaw/main/install.sh -o install.sh
 less install.sh
 bash install.sh
 ```
