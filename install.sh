@@ -481,10 +481,33 @@ configure_openclaw_files() {
   run_cmd mkdir -p "$OPENCLAW_DIR/runtime/data"
   run_cmd mkdir -p "$OPENCLAW_DIR/runtime/logs"
   run_cmd mkdir -p "$OPENCLAW_DIR/runtime/config"
+  run_cmd mkdir -p "$OPENCLAW_DIR/runtime/workspace"
 
   if [ "$DRY_RUN" = "1" ]; then
     echo "[dry-run] write OpenClaw helper files"
     return 0
+  fi
+
+  # Docker Compose requires these vars; empty values cause "invalid spec" volume errors
+  local config_dir="$OPENCLAW_DIR/runtime/config"
+  local workspace_dir="$OPENCLAW_DIR/runtime/workspace"
+  local gateway_token
+  gateway_token="$(openssl rand -hex 16 2>/dev/null || echo "local-$(date +%s)")"
+  if [ ! -f "$OPENCLAW_DIR/.env" ]; then
+    cat > "$OPENCLAW_DIR/.env" <<ENVEOF
+# OpenClaw Docker Compose env (created by EasyMode installer)
+OPENCLAW_CONFIG_DIR=$config_dir
+OPENCLAW_WORKSPACE_DIR=$workspace_dir
+OPENCLAW_GATEWAY_TOKEN=$gateway_token
+ENVEOF
+  fi
+
+  # OpenClaw's npm scripts use pnpm for TypeScript build
+  if command -v corepack >/dev/null 2>&1; then
+    corepack enable 2>/dev/null || true
+    corepack prepare pnpm@latest --activate 2>/dev/null || true
+  elif command -v npm >/dev/null 2>&1; then
+    npm install -g pnpm 2>/dev/null || true
   fi
 
   cat > "$OPENCLAW_DIR/runtime/README_LOCAL_SETUP.txt" <<'EOF'
@@ -569,6 +592,17 @@ for candidate in docker-compose.yml docker-compose.yaml compose.yml compose.yaml
   fi
 done
 
+# Ensure .env exists for Docker Compose (avoids "invalid spec" volume errors)
+if [ -n "\$compose_file" ] && [ ! -f "\$OPENCLAW_DIR/.env" ]; then
+  cfg="\$OPENCLAW_DIR/runtime/config"
+  ws="\$OPENCLAW_DIR/runtime/workspace"
+  mkdir -p "\$cfg" "\$ws"
+  tok="\$(openssl rand -hex 16 2>/dev/null || echo "local-\$(date +%s)")"
+  echo "OPENCLAW_CONFIG_DIR=\$cfg" > "\$OPENCLAW_DIR/.env"
+  echo "OPENCLAW_WORKSPACE_DIR=\$ws" >> "\$OPENCLAW_DIR/.env"
+  echo "OPENCLAW_GATEWAY_TOKEN=\$tok" >> "\$OPENCLAW_DIR/.env"
+fi
+
 started=0
 
 if command -v docker >/dev/null 2>&1 && [ -n "\$compose_file" ]; then
@@ -582,8 +616,20 @@ fi
 
 if [ "\$started" -eq 0 ] && [ -f "\$OPENCLAW_DIR/package.json" ] && command -v npm >/dev/null 2>&1; then
   echo "Trying npm startup..."
+  if ! command -v pnpm >/dev/null 2>&1; then
+    if command -v corepack >/dev/null 2>&1; then
+      corepack enable 2>/dev/null || true
+      corepack prepare pnpm@latest --activate 2>/dev/null || true
+    else
+      npm install -g pnpm >>"\$LOG_FILE" 2>&1 || true
+    fi
+  fi
   if [ ! -d "\$OPENCLAW_DIR/node_modules" ]; then
-    (cd "\$OPENCLAW_DIR" && npm install) >>"\$LOG_FILE" 2>&1 || true
+    if command -v pnpm >/dev/null 2>&1; then
+      (cd "\$OPENCLAW_DIR" && pnpm install) >>"\$LOG_FILE" 2>&1 || true
+    else
+      (cd "\$OPENCLAW_DIR" && npm install) >>"\$LOG_FILE" 2>&1 || true
+    fi
   fi
 
   if command -v jq >/dev/null 2>&1 && jq -e '.scripts.start' "\$OPENCLAW_DIR/package.json" >/dev/null 2>&1; then
@@ -595,8 +641,36 @@ if [ "\$started" -eq 0 ] && [ -f "\$OPENCLAW_DIR/package.json" ] && command -v n
   fi
 fi
 
-if command -v xdg-open >/dev/null 2>&1; then
-  xdg-open "\$DASHBOARD_URL" >/dev/null 2>&1 || true
+port_ready() {
+  if command -v ss >/dev/null 2>&1; then
+    ss -tlnp 2>/dev/null | grep -qE ":\$PORT([^0-9]|\$)" && return 0
+  fi
+  if command -v netstat >/dev/null 2>&1; then
+    netstat -tlnp 2>/dev/null | grep -qE ":\$PORT([^0-9]|\$)" && return 0
+  fi
+  return 1
+}
+
+PORT=3000
+[[ "\$DASHBOARD_URL" =~ :([0-9]+) ]] && PORT="\${BASH_REMATCH[1]}"
+
+if [ "\$started" -eq 1 ] && command -v xdg-open >/dev/null 2>&1; then
+  echo "Waiting for OpenClaw to be ready (up to 90s)..."
+  for i in \$(seq 1 90); do
+    if port_ready; then
+      echo "Ready."
+      xdg-open "\$DASHBOARD_URL" >/dev/null 2>&1 || true
+      break
+    fi
+    sleep 1
+    if [ \$((i % 10)) -eq 0 ]; then
+      echo "  ... still waiting (\$i s)"
+    fi
+  done
+  if ! port_ready; then
+    echo "Timed out. OpenClaw may still be starting. Opening browser anyway."
+    xdg-open "\$DASHBOARD_URL" >/dev/null 2>&1 || true
+  fi
 fi
 
 if [ "\$started" -eq 1 ]; then
@@ -636,18 +710,13 @@ echo "Dashboard URL: \$DASHBOARD_URL"
 echo
 
 running=0
-if command -v docker >/dev/null 2>&1 && [ -f "\$OPENCLAW_DIR/docker-compose.yml" ] || [ -f "\$OPENCLAW_DIR/docker-compose.yaml" ]; then
-  if (cd "\$OPENCLAW_DIR" && docker compose ps 2>/dev/null) | grep -q "Up"; then
-    running=1
-  fi
-fi
-if [ "\$running" -eq 0 ] && command -v ss >/dev/null 2>&1; then
-  if ss -tlnp 2>/dev/null | grep -q ":\$PORT "; then
+if command -v ss >/dev/null 2>&1; then
+  if ss -tlnp 2>/dev/null | grep -qE ":\$PORT([^0-9]|\$)"; then
     running=1
   fi
 fi
 if [ "\$running" -eq 0 ] && command -v netstat >/dev/null 2>&1; then
-  if netstat -tlnp 2>/dev/null | grep -q ":\$PORT "; then
+  if netstat -tlnp 2>/dev/null | grep -qE ":\$PORT([^0-9]|\$)"; then
     running=1
   fi
 fi

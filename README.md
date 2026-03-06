@@ -148,6 +148,9 @@ Cleanup is best-effort and does not remove unrelated user files.
 - **OpenClaw expectations**
   - Installer does not install models.
   - Auto-launch uses best-effort detection (`docker compose` or `npm` scripts) and may need manual startup.
+  - The launcher waits up to 90 seconds for the dashboard port before opening the browser; the Dashboard shortcut only opens when the port is listening.
+  - OpenClaw requires `pnpm` for its npm scripts; the installer enables it via corepack (or `npm install -g pnpm`).
+  - Docker Compose needs `OPENCLAW_CONFIG_DIR`, `OPENCLAW_WORKSPACE_DIR`, `OPENCLAW_GATEWAY_TOKEN`; the installer creates a `.env` with these if missing.
 
 ## Known Limitations
 
@@ -167,6 +170,12 @@ At the end of every run, the installer prints:
   - `BOOTSTRAP_SUMMARY.txt` and `bootstrap.log` locations
 
 ## Troubleshooting
+
+- **`spawn pnpm ENOENT` or OpenClaw build fails**
+  - OpenClaw's scripts require pnpm. Run `corepack enable` and `corepack prepare pnpm@latest --activate`, or `npm install -g pnpm`. Re-run the installer to get the updated launcher that sets this up automatically.
+
+- **Docker Compose "invalid spec: :/home/node/.openclaw: empty section between colons"**
+  - Create a `.env` file in the OpenClaw repo root with `OPENCLAW_CONFIG_DIR`, `OPENCLAW_WORKSPACE_DIR`, `OPENCLAW_GATEWAY_TOKEN` set (see `runtime/config/openclaw.env.example` or re-run the installer).
 
 - **`externally-managed-environment` during dev tools step**
   - This is a Python packaging policy on newer Ubuntu releases (PEP 668).
