@@ -45,7 +45,7 @@ bash install.sh
 ## What It Installs
 
 - Base Ubuntu packages for development and troubleshooting
-- Security tools (`ufw`, `fail2ban`, `unattended-upgrades`)
+- Security tools (`ufw`, `fail2ban`, `unattended-upgrades`) in hardened mode
 - Common dev tooling (`pipx`, `poetry`, `ruff`, `black`)
 - Docker Engine + Docker Compose plugin
 - Node.js via NodeSource (default major: 22)
@@ -55,18 +55,23 @@ bash install.sh
 
 ## Menu Modes
 
-- **Default safe install**
+- **Default desktop-safe install**
   - Installs baseline tools
+  - Leaves security hardening off by default
   - Does not clone OpenClaw
-- **Default + OpenClaw prep**
+- **Desktop-safe + OpenClaw prep**
   - Baseline tools plus OpenClaw clone and local helper files
+- **Hardened install**
+  - Enables security tools (`ufw`, `fail2ban`, `unattended-upgrades`)
 - **Advanced menu**
   - Toggle each install component individually
 
 ## CLI Flags
 
 - `--default` Run safe defaults without menu
-- `--default-openclaw` Run defaults + OpenClaw prep
+- `--default-openclaw` Run desktop-safe defaults + OpenClaw prep
+- `--hardened` Run hardened defaults (security tools enabled)
+- `--hardened-openclaw` Run hardened defaults + OpenClaw prep
 - `--noninteractive` Skip menu and prompts
 - `--yes` Fully noninteractive alias
 - `--dry-run` Print actions only (no changes)
@@ -93,11 +98,11 @@ bash install.sh
 ## Gotchas (Read This)
 
 - **Firewall (`ufw`)**
-  - The script sets incoming traffic to `deny` and outgoing to `allow`.
+  - In hardened mode, incoming traffic is set to `deny` and outgoing to `allow`.
   - This can block inbound SSH or local-network access to services you run.
 - **Fail2ban**
-  - Usually harmless for normal browsing.
-  - Mainly impacts repeated failed login attempts (for example SSH lockouts).
+  - Only enabled when SSH is active.
+  - Usually harmless for normal browsing; mainly impacts repeated failed login attempts.
 - **Docker permissions**
   - If your user is newly added to the `docker` group, you must log out and back in before `docker` works without `sudo`.
 - **Desktop shortcuts/pinning**

@@ -12,7 +12,7 @@ NODE_MAJOR="${NODE_MAJOR:-22}"
 LOG_FILE="${LOG_FILE:-$AI_ROOT/bootstrap.log}"
 
 INSTALL_BASE=1
-INSTALL_SECURITY=1
+INSTALL_SECURITY=0
 INSTALL_DEV_TOOLS=1
 INSTALL_DOCKER=1
 INSTALL_NODE=1
@@ -135,8 +135,13 @@ print_potential_issues() {
   echo "${C_BOLD}Potential issues to keep in mind${C_RESET}"
   echo "${C_TITLE}============================================================${C_RESET}"
   echo
-  echo "  - UFW sets incoming traffic to deny by default."
-  echo "    This can affect remote SSH and local network access to apps/services."
+  if [ "$INSTALL_SECURITY" = "1" ]; then
+    echo "  - UFW sets incoming traffic to deny by default."
+    echo "    This can affect remote SSH and local network access to apps/services."
+  else
+    echo "  - Security hardening is disabled in desktop-safe mode."
+    echo "    Re-run with --hardened if you want UFW/fail2ban enabled."
+  fi
   echo "  - Docker non-sudo usage requires a logout/login after docker group changes."
   echo "  - Desktop shortcut pinning is best-effort and depends on desktop environment support."
   echo "  - Apt may report deferred phased updates; this is normal on Ubuntu."
@@ -306,9 +311,25 @@ install_security_tools() {
 
   run_cmd sudo ufw --force enable
 
-  log "Enabling fail2ban"
-  run_cmd sudo systemctl enable fail2ban
-  run_cmd sudo systemctl restart fail2ban
+  local ssh_active=0
+  if command_exists systemctl; then
+    if systemctl is-active --quiet ssh || systemctl is-active --quiet sshd; then
+      ssh_active=1
+    fi
+  fi
+
+  if [ "$ssh_active" = "1" ]; then
+    log "Enabling fail2ban (SSH is active)"
+    run_cmd sudo systemctl enable fail2ban
+    run_cmd sudo systemctl restart fail2ban
+  else
+    warn "SSH service is not active; fail2ban will remain installed but disabled"
+    if [ "$DRY_RUN" = "1" ]; then
+      echo "[dry-run] sudo systemctl disable --now fail2ban"
+    else
+      sudo systemctl disable --now fail2ban >/dev/null 2>&1 || true
+    fi
+  fi
 }
 
 install_dev_tools() {
@@ -705,7 +726,7 @@ toggle_option() {
 
 set_defaults() {
   INSTALL_BASE=1
-  INSTALL_SECURITY=1
+  INSTALL_SECURITY=0
   INSTALL_DEV_TOOLS=1
   INSTALL_DOCKER=1
   INSTALL_NODE=1
@@ -716,6 +737,22 @@ set_defaults() {
 }
 
 set_power_user_defaults() {
+  set_hardened_openclaw_defaults
+}
+
+set_hardened_defaults() {
+  INSTALL_BASE=1
+  INSTALL_SECURITY=1
+  INSTALL_DEV_TOOLS=1
+  INSTALL_DOCKER=1
+  INSTALL_NODE=1
+  INSTALL_GH=1
+  INSTALL_SHORTCUTS=1
+  INSTALL_OPENCLAW=0
+  CONFIGURE_OPENCLAW=0
+}
+
+set_hardened_openclaw_defaults() {
   INSTALL_BASE=1
   INSTALL_SECURITY=1
   INSTALL_DEV_TOOLS=1
@@ -871,10 +908,11 @@ advanced_menu() {
     echo "  7) Toggle terminal desktop shortcuts"
     echo "  8) Toggle clone OpenClaw repo"
     echo "  9) Toggle configure OpenClaw helper env"
-    echo " 10) Reset to safe defaults"
-    echo " 11) Reset to power-user defaults"
-    echo " 12) Start install"
-    echo " 13) Exit"
+    echo " 10) Reset to desktop-safe defaults"
+    echo " 11) Reset to hardened defaults"
+    echo " 12) Reset to hardened + OpenClaw defaults"
+    echo " 13) Start install"
+    echo " 14) Exit"
     echo
     read -r -p "Choose an option: " choice
 
@@ -889,9 +927,10 @@ advanced_menu() {
       8) toggle_option INSTALL_OPENCLAW ;;
       9) toggle_option CONFIGURE_OPENCLAW ;;
       10) set_defaults ;;
-      11) set_power_user_defaults ;;
-      12) run_install; break ;;
-      13) exit 0 ;;
+      11) set_hardened_defaults ;;
+      12) set_hardened_openclaw_defaults ;;
+      13) run_install; break ;;
+      14) exit 0 ;;
       *) warn "Invalid option"; pause ;;
     esac
   done
@@ -902,9 +941,9 @@ main_menu() {
     print_header
     echo "${C_BOLD}Choose install mode:${C_RESET}"
     echo
-    echo "  1) Default safe install"
+    echo "  1) Default desktop-safe install"
     echo "     - Ubuntu housekeeping"
-    echo "     - Security tools"
+    echo "     - No firewall/fail2ban hardening by default"
     echo "     - Common dev tools"
     echo "     - Docker"
     echo "     - Node.js"
@@ -912,21 +951,23 @@ main_menu() {
     echo "     - Terminal shortcut setup"
     echo "     - No OpenClaw install"
     echo
-    echo "  2) Default + OpenClaw prep"
+    echo "  2) Desktop-safe + OpenClaw prep"
     echo "     - Everything above"
     echo "     - Clone OpenClaw repo"
     echo "     - Create helper config files"
     echo
-    echo "  3) Advanced selection menu"
-    echo "  4) Exit"
+    echo "  3) Hardened install (security tools on)"
+    echo "  4) Advanced selection menu"
+    echo "  5) Exit"
     echo
     read -r -p "Choose an option: " choice
 
     case "$choice" in
       1) set_defaults; run_install; break ;;
-      2) set_power_user_defaults; run_install; break ;;
-      3) advanced_menu; break ;;
-      4) exit 0 ;;
+      2) set_defaults; INSTALL_OPENCLAW=1; CONFIGURE_OPENCLAW=1; run_install; break ;;
+      3) set_hardened_defaults; run_install; break ;;
+      4) advanced_menu; break ;;
+      5) exit 0 ;;
       *) warn "Invalid option"; pause ;;
     esac
   done
@@ -954,7 +995,17 @@ parse_args() {
         ;;
       --default-openclaw)
         NONINTERACTIVE_MODE=1
-        set_power_user_defaults
+        set_defaults
+        INSTALL_OPENCLAW=1
+        CONFIGURE_OPENCLAW=1
+        ;;
+      --hardened)
+        NONINTERACTIVE_MODE=1
+        set_hardened_defaults
+        ;;
+      --hardened-openclaw)
+        NONINTERACTIVE_MODE=1
+        set_hardened_openclaw_defaults
         ;;
       --version)
         echo "$APP_VERSION"
@@ -966,12 +1017,16 @@ Usage:
   $0
   $0 --default
   $0 --default-openclaw
+  $0 --hardened
+  $0 --hardened-openclaw
   $0 --default --noninteractive --yes
   $0 --default --dry-run
 
 Flags:
-  --default            Run safe defaults without menu
-  --default-openclaw   Run defaults + OpenClaw prep
+  --default            Run desktop-safe defaults without menu
+  --default-openclaw   Run desktop-safe defaults + OpenClaw prep
+  --hardened           Run hardened defaults (security tools enabled)
+  --hardened-openclaw  Run hardened defaults + OpenClaw prep
   --noninteractive     Skip menu and prompts
   --yes                Alias for fully noninteractive flow
   --dry-run            Print actions without making changes
