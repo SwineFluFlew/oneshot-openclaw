@@ -444,13 +444,14 @@ install_node() {
   run_apt install -y nodejs
 
   # Ensure pnpm is available for OpenClaw (uses it for build/run)
+  # NodeSource installs Node system-wide; corepack/npm -g need sudo for /usr/bin
   if [ "$DRY_RUN" != "1" ] && command -v node >/dev/null 2>&1; then
     if command -v corepack >/dev/null 2>&1; then
-      corepack enable 2>/dev/null || true
-      corepack prepare pnpm@latest --activate 2>/dev/null || true
+      sudo corepack enable 2>/dev/null || true
+      sudo corepack prepare pnpm@latest --activate 2>/dev/null || true
     fi
     if ! command -v pnpm >/dev/null 2>&1; then
-      npm install -g pnpm 2>/dev/null || true
+      sudo npm install -g pnpm 2>/dev/null || true
     fi
   fi
 }
@@ -520,10 +521,11 @@ configure_openclaw_files() {
 
   # OpenClaw's npm scripts use pnpm for TypeScript build
   if command -v corepack >/dev/null 2>&1; then
-    corepack enable 2>/dev/null || true
-    corepack prepare pnpm@latest --activate 2>/dev/null || true
-  elif command -v npm >/dev/null 2>&1; then
-    npm install -g pnpm 2>/dev/null || true
+    sudo corepack enable 2>/dev/null || true
+    sudo corepack prepare pnpm@latest --activate 2>/dev/null || true
+  fi
+  if ! command -v pnpm >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    sudo npm install -g pnpm 2>/dev/null || true
   fi
 
   cat > "$OPENCLAW_DIR/runtime/README_LOCAL_SETUP.txt" <<'EOF'
@@ -629,8 +631,33 @@ if [ -n "\$compose_file" ]; then
 fi
 
 started=0
+already_running=0
 
-if command -v docker >/dev/null 2>&1 && [ -n "\$compose_file" ]; then
+port_ready_check() {
+  if command -v ss >/dev/null 2>&1; then
+    ss -tlnp 2>/dev/null | grep -qE ":\${1:-3000}([^0-9]|\$)" && return 0
+  fi
+  if command -v netstat >/dev/null 2>&1; then
+    netstat -tlnp 2>/dev/null | grep -qE ":\${1:-3000}([^0-9]|\$)" && return 0
+  fi
+  return 1
+}
+PORT=3000
+[[ "\$DASHBOARD_URL" =~ :([0-9]+) ]] && PORT="\${BASH_REMATCH[1]}"
+if port_ready_check "\$PORT"; then
+  already_running=1
+  echo "OpenClaw appears already running on port \$PORT."
+fi
+if [ -n "\$compose_file" ] && command -v docker >/dev/null 2>&1; then
+  if (cd "\$OPENCLAW_DIR" && docker compose ps 2>/dev/null) | grep -q "Up"; then
+    already_running=1
+    echo "OpenClaw Docker containers are already up."
+  fi
+fi
+
+if [ "\$already_running" -eq 1 ]; then
+  started=1
+elif command -v docker >/dev/null 2>&1 && [ -n "\$compose_file" ]; then
   echo "Trying Docker startup with \$compose_file..."
   env_file="\$OPENCLAW_DIR/.env"
   if [ -f "\$env_file" ]; then
@@ -685,35 +712,28 @@ if [ "\$started" -eq 0 ] && [ -f "\$OPENCLAW_DIR/package.json" ] && command -v n
   fi
 fi
 
-port_ready() {
-  if command -v ss >/dev/null 2>&1; then
-    ss -tlnp 2>/dev/null | grep -qE ":\$PORT([^0-9]|\$)" && return 0
-  fi
-  if command -v netstat >/dev/null 2>&1; then
-    netstat -tlnp 2>/dev/null | grep -qE ":\$PORT([^0-9]|\$)" && return 0
-  fi
-  return 1
-}
-
-PORT=3000
-[[ "\$DASHBOARD_URL" =~ :([0-9]+) ]] && PORT="\${BASH_REMATCH[1]}"
+port_ready() { port_ready_check "\$PORT"; }
 
 if [ "\$started" -eq 1 ] && command -v xdg-open >/dev/null 2>&1; then
-  echo "Waiting for OpenClaw to be ready (up to 90s)..."
-  for i in \$(seq 1 90); do
-    if port_ready; then
-      echo "Ready."
-      xdg-open "\$DASHBOARD_URL" >/dev/null 2>&1 || true
-      break
-    fi
-    sleep 1
-    if [ \$((i % 10)) -eq 0 ]; then
-      echo "  ... still waiting (\$i s)"
-    fi
-  done
-  if ! port_ready; then
-    echo "Timed out. OpenClaw may still be starting. Opening browser anyway."
+  if [ "\$already_running" -eq 1 ]; then
     xdg-open "\$DASHBOARD_URL" >/dev/null 2>&1 || true
+  else
+      echo "Waiting for OpenClaw to be ready (up to 90s)..."
+    for i in \$(seq 1 90); do
+      if port_ready; then
+        echo "Ready."
+        xdg-open "\$DASHBOARD_URL" >/dev/null 2>&1 || true
+        break
+      fi
+      sleep 1
+      if [ \$((i % 10)) -eq 0 ]; then
+        echo "  ... still waiting (\$i s)"
+      fi
+    done
+    if ! port_ready; then
+      echo "Timed out. OpenClaw may still be starting. Opening browser anyway."
+      xdg-open "\$DASHBOARD_URL" >/dev/null 2>&1 || true
+    fi
   fi
 fi
 
@@ -936,23 +956,25 @@ run_openclaw_onboard() {
 
   if ! command -v pnpm >/dev/null 2>&1; then
     if command -v corepack >/dev/null 2>&1; then
-      corepack enable 2>/dev/null || true
-      corepack prepare pnpm@latest --activate 2>/dev/null || true
+      sudo corepack enable 2>/dev/null || true
+      sudo corepack prepare pnpm@latest --activate 2>/dev/null || true
     fi
     if ! command -v pnpm >/dev/null 2>&1; then
-      npm install -g pnpm 2>/dev/null || true
+      sudo npm install -g pnpm 2>/dev/null || true
     fi
   fi
 
   if ! command -v pnpm >/dev/null 2>&1; then
     warn "pnpm not available; skipping onboard wizard"
-    echo "Run manually: npm install -g pnpm && cd $OPENCLAW_DIR && pnpm install && pnpm run openclaw -- onboard"
+    echo "Run manually: sudo corepack enable && sudo corepack prepare pnpm@latest --activate"
+    echo "  or: sudo npm install -g pnpm"
+    echo "  then: cd $OPENCLAW_DIR && pnpm install && pnpm run openclaw -- onboard"
     record_failed "OpenClaw onboard skipped (pnpm unavailable)"
-    return 1
+    return 0
   fi
 
   if [ ! -d "$OPENCLAW_DIR/node_modules" ]; then
-    (cd "$OPENCLAW_DIR" && pnpm install) || { record_failed "pnpm install failed"; return 1; }
+    (cd "$OPENCLAW_DIR" && pnpm install) || { record_failed "pnpm install failed"; return 0; }
   fi
 
   if [ "$YES_MODE" = "1" ] || [ "$NONINTERACTIVE_MODE" = "1" ]; then

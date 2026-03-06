@@ -175,7 +175,7 @@ At the end of every run, the installer prints:
 ## Troubleshooting
 
 - **`spawn pnpm ENOENT` or OpenClaw build fails**
-  - OpenClaw's scripts require pnpm. Run `corepack enable` and `corepack prepare pnpm@latest --activate`, or `npm install -g pnpm`. Re-run the installer to get the updated launcher that sets this up automatically.
+  - OpenClaw's scripts require pnpm. With system Node (NodeSource), run: `sudo corepack enable && sudo corepack prepare pnpm@latest --activate` or `sudo npm install -g pnpm`. Re-run the installer to get the updated launcher.
 
 - **Docker Compose "invalid spec: :/home/node/.openclaw: empty section between colons"**
   - Create a `.env` file in the OpenClaw repo root with `OPENCLAW_CONFIG_DIR`, `OPENCLAW_WORKSPACE_DIR`, `OPENCLAW_GATEWAY_TOKEN` set (see `runtime/config/openclaw.env.example` or re-run the installer).
@@ -201,7 +201,7 @@ docker run hello-world
 
 - Dashboard URL: `http://127.0.0.1:3000` (or value of `OPENCLAW_DASHBOARD_URL`)
 - Status script: `$OPENCLAW_DIR/runtime/openclaw-status.sh` — checks if OpenClaw is running and optionally opens the dashboard
-- Launcher: `$OPENCLAW_DIR/runtime/openclaw-launch.sh` — starts OpenClaw and opens the dashboard
+- Launcher: `$OPENCLAW_DIR/runtime/openclaw-launch.sh` — starts OpenClaw and opens the dashboard (skips start if already running)
 - Onboard wizard: run at end of install (`openclaw onboard`) — configures .env, gateway, workspace, and skills
 - Autostart: When enabled, OpenClaw starts automatically at login via a systemd user service (`~/.config/systemd/user/openclaw.service`)
 
