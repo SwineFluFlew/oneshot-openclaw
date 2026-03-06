@@ -809,6 +809,35 @@ EOF
   chmod +x "$OPENCLAW_DIR/runtime/openclaw-status.sh"
 }
 
+create_openclaw_cli_wrapper() {
+  log "Creating OpenClaw CLI wrapper (openclaw command)"
+  run_cmd mkdir -p "$OPENCLAW_DIR/runtime"
+
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "[dry-run] write $OPENCLAW_DIR/runtime/openclaw and symlink to ~/.local/bin"
+    return 0
+  fi
+
+  cat > "$OPENCLAW_DIR/runtime/openclaw" <<'CLIEOF'
+#!/usr/bin/env bash
+set -euo pipefail
+OPENCLAW_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ ! -d "$OPENCLAW_DIR/node_modules" ]; then
+  echo "Run 'cd $OPENCLAW_DIR && pnpm install' first."
+  exit 1
+fi
+exec pnpm exec -C "$OPENCLAW_DIR" openclaw "$@"
+CLIEOF
+  chmod +x "$OPENCLAW_DIR/runtime/openclaw"
+
+  run_cmd mkdir -p "$HOME/.local/bin"
+  if [ -L "$HOME/.local/bin/openclaw" ] || [ -f "$HOME/.local/bin/openclaw" ]; then
+    rm -f "$HOME/.local/bin/openclaw"
+  fi
+  ln -sf "$OPENCLAW_DIR/runtime/openclaw" "$HOME/.local/bin/openclaw"
+  log "OpenClaw CLI: run 'openclaw' from terminal (ensure ~/.local/bin is in PATH)"
+}
+
 create_openclaw_autostart_service() {
   if [ "$OPENCLAW_AUTOSTART" != "1" ]; then
     return 0
@@ -1366,7 +1395,8 @@ run_cleanup() {
   run_cmd rm -f "$HOME/Desktop/OpenClaw Dashboard.desktop"
   run_cmd rm -f "$HOME/.local/share/applications/openclaw.desktop"
   run_cmd rm -f "$HOME/.local/share/applications/openclaw-dashboard.desktop"
-  record_changed "Removed OpenClaw desktop shortcuts"
+  run_cmd rm -f "$HOME/.local/bin/openclaw"
+  record_changed "Removed OpenClaw desktop shortcuts and CLI symlink"
 
   log "Removing OpenClaw autostart service"
   if [ -f "$HOME/.config/systemd/user/openclaw.service" ]; then
@@ -1488,6 +1518,8 @@ run_install() {
     record_changed "OpenClaw launcher script generated"
     create_openclaw_status_script
     record_changed "OpenClaw status script generated"
+    create_openclaw_cli_wrapper
+    record_changed "OpenClaw CLI wrapper (openclaw command) added to ~/.local/bin"
     create_openclaw_icon
     record_changed "OpenClaw icon asset generated"
     if [ "$CREATE_OPENCLAW_SHORTCUT" = "1" ]; then
@@ -1542,6 +1574,7 @@ run_install() {
     echo "${C_TITLE}============================================================${C_RESET}"
     echo
     echo "  ${C_INFO}Dashboard URL:${C_RESET} $OPENCLAW_DASHBOARD_URL"
+    echo "  ${C_INFO}CLI:${C_RESET}           openclaw (from ~/.local/bin; run 'openclaw --help')"
     echo "  ${C_INFO}Status script:${C_RESET} $OPENCLAW_DIR/runtime/openclaw-status.sh"
     echo "  ${C_INFO}Launcher:${C_RESET}      $OPENCLAW_DIR/runtime/openclaw-launch.sh"
     if [ "$OPENCLAW_AUTOSTART" = "1" ]; then

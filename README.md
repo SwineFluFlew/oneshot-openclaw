@@ -200,6 +200,7 @@ docker run hello-world
 ## OpenClaw Dashboard (when OpenClaw is installed)
 
 - Dashboard URL: `http://127.0.0.1:3000` (or value of `OPENCLAW_DASHBOARD_URL`)
+- **CLI:** `openclaw` — symlinked to `~/.local/bin/openclaw`; run `openclaw --help` or `openclaw onboard` from any terminal (ensure `~/.local/bin` is in `PATH`; open a new terminal if needed)
 - Status script: `$OPENCLAW_DIR/runtime/openclaw-status.sh` — checks if OpenClaw is running and optionally opens the dashboard
 - Launcher: `$OPENCLAW_DIR/runtime/openclaw-launch.sh` — starts OpenClaw and opens the dashboard (skips start if already running)
 - Onboard wizard: run at end of install (`openclaw onboard`) — configures .env, gateway, workspace, and skills

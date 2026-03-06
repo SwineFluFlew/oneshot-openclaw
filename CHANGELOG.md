@@ -2,6 +2,7 @@
 
 ## 1.1.0 - 2026-03-06
 
+- Add `openclaw` CLI command: symlink to `~/.local/bin/openclaw` so you can run `openclaw` from any terminal.
 - Skip OpenClaw onboarding when repo is already installed and up to date (git pull reported "Already up to date").
 - Fixed OpenClaw desktop shortcuts not launching when clicked (use wrapper scripts instead of bash -c to avoid .desktop Exec quoting issues).
 - Added one-command Ubuntu EasyMode installer scaffold.
