@@ -36,6 +36,7 @@ show_reboot_notice=0
 docker_group_added=0
 SUDO_KEEPALIVE_PID=""
 OPENCLAW_ACTION=""
+OPENCLAW_ALREADY_UP_TO_DATE=0
 
 declare -a SUMMARY_ADDED=()
 declare -a SUMMARY_CHANGED=()
@@ -482,9 +483,16 @@ install_openclaw_repo() {
   if [ ! -d "$OPENCLAW_DIR/.git" ]; then
     git clone "$OPENCLAW_REPO" "$OPENCLAW_DIR"
     OPENCLAW_ACTION="added"
+    OPENCLAW_ALREADY_UP_TO_DATE=0
   else
-    git -C "$OPENCLAW_DIR" pull --ff-only
+    local pull_out
+    pull_out=$(git -C "$OPENCLAW_DIR" pull --ff-only 2>&1) || true
     OPENCLAW_ACTION="changed"
+    if echo "$pull_out" | grep -q "Already up to date"; then
+      OPENCLAW_ALREADY_UP_TO_DATE=1
+    else
+      OPENCLAW_ALREADY_UP_TO_DATE=0
+    fi
   fi
 }
 
@@ -965,6 +973,10 @@ run_openclaw_onboard() {
   fi
   if [ "$DRY_RUN" = "1" ]; then
     echo "[dry-run] Run OpenClaw onboard wizard"
+    return 0
+  fi
+  if [ "$OPENCLAW_ALREADY_UP_TO_DATE" = "1" ]; then
+    log "OpenClaw already installed and up to date; skipping onboarding"
     return 0
   fi
 
