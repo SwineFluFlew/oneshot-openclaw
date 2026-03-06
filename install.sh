@@ -442,6 +442,17 @@ install_node() {
 
   run_apt update
   run_apt install -y nodejs
+
+  # Ensure pnpm is available for OpenClaw (uses it for build/run)
+  if [ "$DRY_RUN" != "1" ] && command -v node >/dev/null 2>&1; then
+    if command -v corepack >/dev/null 2>&1; then
+      corepack enable 2>/dev/null || true
+      corepack prepare pnpm@latest --activate 2>/dev/null || true
+    fi
+    if ! command -v pnpm >/dev/null 2>&1; then
+      npm install -g pnpm 2>/dev/null || true
+    fi
+  fi
 }
 
 install_gh() {
@@ -621,10 +632,18 @@ started=0
 
 if command -v docker >/dev/null 2>&1 && [ -n "\$compose_file" ]; then
   echo "Trying Docker startup with \$compose_file..."
-  if (cd "\$OPENCLAW_DIR" && docker compose up -d) >>"\$LOG_FILE" 2>&1; then
+  env_file="\$OPENCLAW_DIR/.env"
+  if [ -f "\$env_file" ]; then
+    compose_cmd="docker compose --env-file \"\$env_file\" up -d"
+    sudo_cmd="sudo docker compose --env-file \"\$env_file\" up -d"
+  else
+    compose_cmd="docker compose up -d"
+    sudo_cmd="sudo docker compose up -d"
+  fi
+  if (cd "\$OPENCLAW_DIR" && eval \$compose_cmd) >>"\$LOG_FILE" 2>&1; then
     started=1
   elif [ "\${OPENCLAW_FORCE_SUDO_DOCKER:-0}" = "1" ] && command -v sudo >/dev/null 2>&1; then
-    (cd "\$OPENCLAW_DIR" && sudo docker compose up -d) >>"\$LOG_FILE" 2>&1 && started=1
+    (cd "\$OPENCLAW_DIR" && eval \$sudo_cmd) >>"\$LOG_FILE" 2>&1 && started=1
   fi
 fi
 
@@ -951,24 +970,34 @@ launch_openclaw_after_install() {
     return 0
   fi
 
-  log "Launching OpenClaw and opening dashboard"
-
   if [ "$DRY_RUN" = "1" ]; then
-    echo "[dry-run] $OPENCLAW_DIR/runtime/openclaw-launch.sh"
+    echo "[dry-run] OpenClaw launch or dashboard open"
     return 0
   fi
 
-  if [ ! -x "$OPENCLAW_DIR/runtime/openclaw-launch.sh" ]; then
-    warn "OpenClaw launcher is missing; skipping auto-launch"
-    record_failed "OpenClaw auto-launch skipped (launcher missing)"
-    return 0
-  fi
-
-  if OPENCLAW_FORCE_SUDO_DOCKER=1 "$OPENCLAW_DIR/runtime/openclaw-launch.sh"; then
-    record_changed "OpenClaw launch command started and dashboard open attempted"
+  if [ "$OPENCLAW_ONBOARD" = "1" ]; then
+    log "Onboard wizard started the gateway; opening dashboard"
+    run_cmd mkdir -p "$OPENCLAW_DIR/runtime"
+    if [ -x "$OPENCLAW_DIR/runtime/openclaw-status.sh" ]; then
+      "$OPENCLAW_DIR/runtime/openclaw-status.sh"
+      record_changed "Dashboard opened (onboard started gateway)"
+    elif command -v xdg-open >/dev/null 2>&1; then
+      xdg-open "${OPENCLAW_DASHBOARD_URL:-http://127.0.0.1:3000}" >/dev/null 2>&1 || true
+      record_changed "Dashboard URL opened"
+    fi
   else
-    warn "OpenClaw auto-launch could not determine startup command"
-    record_failed "OpenClaw auto-launch did not find a supported startup method"
+    log "Launching OpenClaw and opening dashboard"
+    if [ ! -x "$OPENCLAW_DIR/runtime/openclaw-launch.sh" ]; then
+      warn "OpenClaw launcher is missing; skipping auto-launch"
+      record_failed "OpenClaw auto-launch skipped (launcher missing)"
+      return 0
+    fi
+    if OPENCLAW_FORCE_SUDO_DOCKER=1 "$OPENCLAW_DIR/runtime/openclaw-launch.sh"; then
+      record_changed "OpenClaw launch command started and dashboard open attempted"
+    else
+      warn "OpenClaw auto-launch could not determine startup command"
+      record_failed "OpenClaw auto-launch did not find a supported startup method"
+    fi
   fi
 }
 

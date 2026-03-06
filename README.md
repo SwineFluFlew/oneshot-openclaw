@@ -152,7 +152,7 @@ Cleanup is best-effort and does not remove unrelated user files.
   - Installer does not install models.
   - Auto-launch uses best-effort detection (`docker compose` or `npm` scripts) and may need manual startup.
   - The launcher waits up to 90 seconds for the dashboard port before opening the browser; the Dashboard shortcut only opens when the port is listening.
-  - OpenClaw requires `pnpm` for its npm scripts; the installer enables it via corepack (or `npm install -g pnpm`).
+  - OpenClaw requires `pnpm`; the installer installs it after Node (via corepack or `npm install -g pnpm`).
   - Docker Compose needs `OPENCLAW_CONFIG_DIR`, `OPENCLAW_WORKSPACE_DIR`, `OPENCLAW_GATEWAY_TOKEN`; the installer creates a `.env` with these if missing.
 
 ## Known Limitations
