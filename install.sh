@@ -29,28 +29,124 @@ SKIP_UPDATE=0
 show_reboot_notice=0
 docker_group_added=0
 SUDO_KEEPALIVE_PID=""
+OPENCLAW_ACTION=""
+
+declare -a SUMMARY_ADDED=()
+declare -a SUMMARY_CHANGED=()
+declare -a SUMMARY_FAILED=()
+
+# Color theme (auto-disables when not a TTY or NO_COLOR is set)
+if [ -t 1 ] && [ "${NO_COLOR:-}" = "" ]; then
+  C_RESET=$'\033[0m'
+  C_BOLD=$'\033[1m'
+  C_DIM=$'\033[2m'
+  C_TITLE=$'\033[1;36m'
+  C_APP=$'\033[1;35m'
+  C_SECTION=$'\033[1;34m'
+  C_INFO=$'\033[0;36m'
+  C_WARN=$'\033[1;33m'
+  C_ERR=$'\033[1;31m'
+  C_OK=$'\033[1;32m'
+else
+  C_RESET=""
+  C_BOLD=""
+  C_DIM=""
+  C_TITLE=""
+  C_APP=""
+  C_SECTION=""
+  C_INFO=""
+  C_WARN=""
+  C_ERR=""
+  C_OK=""
+fi
 
 print_header() {
   clear || true
-  echo "============================================================"
-  echo "  $APP_NAME v$APP_VERSION"
-  echo "============================================================"
+  echo "${C_TITLE}============================================================${C_RESET}"
+  echo "  ${C_APP}$APP_NAME${C_RESET} ${C_DIM}v$APP_VERSION${C_RESET}"
+  echo "${C_TITLE}============================================================${C_RESET}"
   echo
 }
 
 log() {
   echo
-  echo "---- $1"
+  echo "${C_SECTION}---- $1${C_RESET}"
 }
 
 warn() {
   echo
-  echo "WARNING: $1"
+  echo "${C_WARN}WARNING:${C_RESET} $1"
+}
+
+record_added() {
+  SUMMARY_ADDED+=("$1")
+}
+
+record_changed() {
+  SUMMARY_CHANGED+=("$1")
+}
+
+record_failed() {
+  SUMMARY_FAILED+=("$1")
+}
+
+print_execution_summary() {
+  local item
+  echo
+  echo "${C_TITLE}============================================================${C_RESET}"
+  echo "${C_BOLD}Execution summary${C_RESET}"
+  echo "${C_TITLE}============================================================${C_RESET}"
+
+  echo
+  echo "${C_OK}${C_BOLD}Added:${C_RESET}"
+  if [ "${#SUMMARY_ADDED[@]}" -eq 0 ]; then
+    echo "  ${C_DIM}- None${C_RESET}"
+  else
+    for item in "${SUMMARY_ADDED[@]}"; do
+      echo "  - $item"
+    done
+  fi
+
+  echo
+  echo "${C_INFO}${C_BOLD}Changed:${C_RESET}"
+  if [ "${#SUMMARY_CHANGED[@]}" -eq 0 ]; then
+    echo "  ${C_DIM}- None${C_RESET}"
+  else
+    for item in "${SUMMARY_CHANGED[@]}"; do
+      echo "  - $item"
+    done
+  fi
+
+  echo
+  echo "${C_WARN}${C_BOLD}Failed (non-fatal):${C_RESET}"
+  if [ "${#SUMMARY_FAILED[@]}" -eq 0 ]; then
+    echo "  ${C_DIM}- None${C_RESET}"
+  else
+    for item in "${SUMMARY_FAILED[@]}"; do
+      echo "  - $item"
+    done
+  fi
+  echo
+}
+
+print_potential_issues() {
+  echo
+  echo "${C_TITLE}============================================================${C_RESET}"
+  echo "${C_BOLD}Potential issues to keep in mind${C_RESET}"
+  echo "${C_TITLE}============================================================${C_RESET}"
+  echo
+  echo "  - UFW sets incoming traffic to deny by default."
+  echo "    This can affect remote SSH and local network access to apps/services."
+  echo "  - Docker non-sudo usage requires a logout/login after docker group changes."
+  echo "  - Desktop shortcut pinning is best-effort and depends on desktop environment support."
+  echo "  - Apt may report deferred phased updates; this is normal on Ubuntu."
+  echo "  - This script does not install AI models and does not auto-start OpenClaw."
+  echo
 }
 
 die() {
   echo
-  echo "ERROR: $1"
+  echo "${C_ERR}${C_BOLD}ERROR:${C_RESET} $1"
   exit 1
 }
 
@@ -62,9 +158,11 @@ pause() {
 on_error() {
   local exit_code="$1"
   local line_no="$2"
+  record_failed "Script aborted at line $line_no (exit code $exit_code)"
   echo
-  echo "ERROR: Script failed at line $line_no with exit code $exit_code"
-  echo "Check log file: $LOG_FILE"
+  echo "${C_ERR}${C_BOLD}ERROR:${C_RESET} Script failed at line $line_no with exit code $exit_code"
+  echo "${C_INFO}Check log file:${C_RESET} $LOG_FILE"
+  print_execution_summary
   exit "$exit_code"
 }
 
@@ -234,6 +332,7 @@ install_dev_tools() {
 
   if ! command_exists pipx; then
     warn "pipx is unavailable; skipping poetry/ruff/black installs"
+    record_failed "pipx unavailable; skipped poetry/ruff/black"
     return 0
   fi
 
@@ -243,9 +342,9 @@ install_dev_tools() {
     export PATH="$HOME/.local/bin:$PATH"
   fi
 
-  pipx install poetry || pipx upgrade poetry || warn "poetry install failed; continuing"
-  pipx install ruff || pipx upgrade ruff || warn "ruff install failed; continuing"
-  pipx install black || pipx upgrade black || warn "black install failed; continuing"
+  pipx install poetry || pipx upgrade poetry || { warn "poetry install failed; continuing"; record_failed "poetry install/upgrade failed"; }
+  pipx install ruff || pipx upgrade ruff || { warn "ruff install failed; continuing"; record_failed "ruff install/upgrade failed"; }
+  pipx install black || pipx upgrade black || { warn "black install failed; continuing"; record_failed "black install/upgrade failed"; }
 }
 
 install_docker() {
@@ -336,13 +435,16 @@ install_openclaw_repo() {
 
   if [ "$DRY_RUN" = "1" ]; then
     echo "[dry-run] clone or update $OPENCLAW_REPO into $OPENCLAW_DIR"
+    OPENCLAW_ACTION="changed"
     return 0
   fi
 
   if [ ! -d "$OPENCLAW_DIR/.git" ]; then
     git clone "$OPENCLAW_REPO" "$OPENCLAW_DIR"
+    OPENCLAW_ACTION="added"
   else
     git -C "$OPENCLAW_DIR" pull --ff-only
+    OPENCLAW_ACTION="changed"
   fi
 }
 
@@ -557,10 +659,10 @@ run_verification_checks() {
     local label="$1"
     local cmd="$2"
     if eval "$cmd" >/dev/null 2>&1; then
-      echo "[OK]   $label"
+      echo "${C_OK}[OK]${C_RESET}   $label"
       ok=$((ok + 1))
     else
-      echo "[FAIL] $label"
+      echo "${C_ERR}[FAIL]${C_RESET} $label"
       fail=$((fail + 1))
     fi
   }
@@ -572,12 +674,12 @@ run_verification_checks() {
   check_cmd "gh available" "command -v gh"
 
   echo
-  echo "Verification result: ${ok} passed, ${fail} failed"
+  echo "${C_BOLD}Verification result:${C_RESET} ${C_OK}${ok} passed${C_RESET}, ${C_ERR}${fail} failed${C_RESET}"
 }
 
 show_status() {
   print_header
-  echo "Current selection:"
+  echo "${C_BOLD}Current selection:${C_RESET}"
   echo
   echo "  1. Base Ubuntu housekeeping      : $INSTALL_BASE"
   echo "  2. Security tools                : $INSTALL_SECURITY"
@@ -626,45 +728,95 @@ set_power_user_defaults() {
 }
 
 run_install() {
+  local had_node=0
+  local had_docker=0
+  local had_gh=0
+  local had_openclaw=0
+
+  if command_exists node; then
+    had_node=1
+  fi
+  if command_exists docker; then
+    had_docker=1
+  fi
+  if command_exists gh; then
+    had_gh=1
+  fi
+  if [ -d "$OPENCLAW_DIR/.git" ]; then
+    had_openclaw=1
+  fi
+
   require_sudo
   start_sudo_keepalive
   create_workspace
+  record_changed "Workspace directories ensured at $AI_ROOT"
 
   if [ "$SKIP_UPDATE" = "0" ]; then
     system_update
+    record_changed "System package index/upgrade processed"
   else
     log "Skipping apt update/upgrade as requested"
   fi
 
   if [ "$INSTALL_BASE" = "1" ]; then
     install_base_packages
+    record_changed "Base package set installed/verified"
   fi
   if [ "$INSTALL_SECURITY" = "1" ]; then
     install_security_tools
+    record_changed "Security tools configured (ufw, fail2ban, unattended-upgrades)"
   fi
   if [ "$INSTALL_DEV_TOOLS" = "1" ]; then
     install_dev_tools
+    record_changed "Dev tools processed via pipx"
   fi
   if [ "$INSTALL_DOCKER" = "1" ]; then
     install_docker
+    if [ "$had_docker" = "1" ]; then
+      record_changed "Docker engine and compose verified/updated"
+    else
+      record_added "Docker engine and compose installed"
+    fi
   fi
   if [ "$INSTALL_NODE" = "1" ]; then
     install_node
+    if [ "$had_node" = "1" ]; then
+      record_changed "Node.js runtime updated/verified"
+    else
+      record_added "Node.js runtime installed"
+    fi
   fi
   if [ "$INSTALL_GH" = "1" ]; then
     install_gh
+    if [ "$had_gh" = "1" ]; then
+      record_changed "GitHub CLI updated/verified"
+    else
+      record_added "GitHub CLI installed"
+    fi
   fi
   if [ "$INSTALL_SHORTCUTS" = "1" ]; then
     install_terminal_shortcuts
+    record_changed "Terminal desktop shortcut and dock pin attempted"
   fi
   if [ "$INSTALL_OPENCLAW" = "1" ]; then
     install_openclaw_repo
+    if [ "$OPENCLAW_ACTION" = "added" ] || [ "$had_openclaw" = "0" ]; then
+      record_added "OpenClaw repository cloned to $OPENCLAW_DIR"
+    else
+      record_changed "OpenClaw repository refreshed at $OPENCLAW_DIR"
+    fi
   fi
   if [ "$CONFIGURE_OPENCLAW" = "1" ]; then
     if [ "$INSTALL_OPENCLAW" != "1" ]; then
       install_openclaw_repo
+      if [ "$OPENCLAW_ACTION" = "added" ] || [ "$had_openclaw" = "0" ]; then
+        record_added "OpenClaw repository cloned to $OPENCLAW_DIR"
+      else
+        record_changed "OpenClaw repository refreshed at $OPENCLAW_DIR"
+      fi
     fi
     configure_openclaw_files
+    record_changed "OpenClaw helper runtime/config files generated"
   fi
 
   write_summary
@@ -673,14 +825,15 @@ run_install() {
   fi
 
   echo
-  echo "============================================================"
-  echo "Install complete"
-  echo "============================================================"
+  echo "${C_TITLE}============================================================${C_RESET}"
+  echo "${C_OK}${C_BOLD}Install complete${C_RESET}"
+  echo "${C_TITLE}============================================================${C_RESET}"
   echo
-  echo "Summary file:"
+  echo "${C_INFO}Summary file:${C_RESET}"
   echo "  $AI_ROOT/BOOTSTRAP_SUMMARY.txt"
-  echo "Log file:"
+  echo "${C_INFO}Log file:${C_RESET}"
   echo "  $LOG_FILE"
+  print_execution_summary
 
   if [ "$docker_group_added" = "1" ]; then
     echo
@@ -690,6 +843,8 @@ run_install() {
     echo
     echo "A reboot or re-login is recommended."
   fi
+
+  print_potential_issues
 
   echo
   echo "Recommended checks:"
@@ -705,7 +860,7 @@ run_install() {
 advanced_menu() {
   while true; do
     show_status
-    echo "Advanced menu:"
+    echo "${C_BOLD}Advanced menu:${C_RESET}"
     echo
     echo "  1) Toggle base Ubuntu housekeeping"
     echo "  2) Toggle security tools"
@@ -745,7 +900,7 @@ advanced_menu() {
 main_menu() {
   while true; do
     print_header
-    echo "Choose install mode:"
+    echo "${C_BOLD}Choose install mode:${C_RESET}"
     echo
     echo "  1) Default safe install"
     echo "     - Ubuntu housekeeping"

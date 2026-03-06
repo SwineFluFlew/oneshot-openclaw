@@ -90,6 +90,34 @@ bash install.sh
 - Desktop shortcut behavior depends on desktop environment (GNOME pinning is supported).
 - Script does not install models and does not auto-start OpenClaw.
 
+## Gotchas (Read This)
+
+- **Firewall (`ufw`)**
+  - The script sets incoming traffic to `deny` and outgoing to `allow`.
+  - This can block inbound SSH or local-network access to services you run.
+- **Fail2ban**
+  - Usually harmless for normal browsing.
+  - Mainly impacts repeated failed login attempts (for example SSH lockouts).
+- **Docker permissions**
+  - If your user is newly added to the `docker` group, you must log out and back in before `docker` works without `sudo`.
+- **Desktop shortcuts/pinning**
+  - Shortcut creation and dock pinning are best-effort and desktop-environment specific.
+- **Apt phased updates**
+  - Seeing "upgrades have been deferred due to phasing" is normal on Ubuntu.
+- **OpenClaw expectations**
+  - Installer does not install models and does not auto-start OpenClaw.
+
+## End-of-install issue summary
+
+At the end of every run, the installer prints:
+
+- **Execution summary**
+  - Added / Changed / Failed (non-fatal) steps
+- **Potential issues to keep in mind**
+  - Common post-install gotchas users should be aware of
+- **Summary and log file paths**
+  - `BOOTSTRAP_SUMMARY.txt` and `bootstrap.log` locations
+
 ## Troubleshooting
 
 - **`externally-managed-environment` during dev tools step**
